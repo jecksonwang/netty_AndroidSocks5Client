@@ -12,10 +12,15 @@ import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.codec.ByteToMessageDecoder
 import io.netty.handler.timeout.IdleStateHandler
 import jesson.com.nettyclinet.channeladapter.LocalChannelAdapter
+import jesson.com.nettyclinet.utils.LogUtil
 import jesson.com.nettyclinet.utils.NetworkUtils
 import java.util.concurrent.TimeUnit
 
 class ClientCore {
+
+    companion object{
+        const val TAG = "ClientCore"
+    }
 
     private var mContext: Context? = null
     private var mChannel: Channel? = null
@@ -25,15 +30,16 @@ class ClientCore {
     var mWritePingTimeOut: Long = 20000
     var mAllPingTimeOut: Long = 0
 
-    private var byteToMessageDecoder: ByteToMessageDecoder? = null
-    private var localChannelAdapter: LocalChannelAdapter? = null
-    private var nioEventLoopGroup: NioEventLoopGroup? = null
+    var byteToMessageDecoder: ByteToMessageDecoder? = null
+    var localChannelAdapter: LocalChannelAdapter? = null
+    var nioEventLoopGroup: NioEventLoopGroup? = null
 
     constructor(ctx: Context) {
         this.mContext = ctx
     }
 
-    private fun connect(host: String, port: Int) {
+    fun connect(host: String, port: Int) {
+        LogUtil.d(TAG, "connect::host is: $host and port is: $port")
         if (!NetworkUtils.isConnected(mContext)) {
             return
         }
@@ -69,53 +75,27 @@ class ClientCore {
             })
             f = bootstrap.connect(host, port).awaitUninterruptibly()
             if (f.isDone) {
+                LogUtil.d(TAG, "connect::connect done")
                 if (f.isSuccess) {
+                    LogUtil.d(TAG, "connect::connect success")
                     mChannel = f.channel()
                     f.channel().closeFuture().sync()
                 } else {
+                    LogUtil.d(TAG, "connect::connect fail")
                     if (f.channel() != null) {
                         f.channel().close()
                     }
                 }
+            }else{
+                LogUtil.d(TAG, "connect::connect not done")
             }
+            localChannelAdapter?.mIChannelChange?.channelStateChange(mChannel)
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
             nioEventLoopGroup?.shutdownGracefully()
             nioEventLoopGroup = null
         }
-    }
-
-    inner class ClientCoreBuilder {
-
-        private var clientCore: ClientCore? = null
-
-        constructor(ctx: Context){
-            clientCore = ClientCore(ctx)
-        }
-
-        fun setProxy(openProxy: Boolean): ClientCore? {
-            clientCore?.mOpenProxy = openProxy
-            return clientCore
-        }
-
-        fun setFrameDecoder(decoder: ByteToMessageDecoder): ClientCore? {
-            clientCore?.byteToMessageDecoder = decoder
-            return clientCore
-        }
-
-        fun setChannelAdapter(adapter: LocalChannelAdapter):ClientCore?{
-            clientCore?.localChannelAdapter = adapter
-            return clientCore
-        }
-
-        fun build(): ClientCore? {
-            return clientCore
-        }
-    }
-
-    interface IProxyStateChange {
-        fun proxyStateChange(state: Boolean)
     }
 
 }

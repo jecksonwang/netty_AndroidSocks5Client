@@ -12,10 +12,10 @@ import jesson.com.nettyclinet.utils.Socks5Utils
 import java.net.InetAddress
 
 class LocalChannelAdapter(
-    private var mIChannelChange: IChannelChange
+    var mIChannelChange: IChannelChange
 ) : ChannelHandlerAdapter() {
     /**
-     *  if use socks5,open simpleProxy,LocalChannelAdapter can auto handle socks5,and you must set mTargetIP,mTargetPort
+     *  if use socks5,open simpleProxy,LocalChannelAdapter can auto handle socks5,and you must set mTargetIP,mTargetPort and mIProxyStateChange listener
      *  if socks5 need auth,you also need set name and password,otherwise you need do it by yourself
      */
     var mSimpleProxy: Boolean = false
@@ -23,6 +23,7 @@ class LocalChannelAdapter(
     var mTargetPort: Int = 0
     var mAuthName: String? = null
     var mAuthPassword: String? = null
+    var mIProxyStateChange: IProxyStateChange? = null
 
     companion object {
         const val TAG = "LocalChannelAdapter"
@@ -36,7 +37,7 @@ class LocalChannelAdapter(
             mProxyRequest = Constants.PROXY_REQUEST_INIT
             val data: ByteArray = Socks5Utils.getInstance().buildProxyInitInfo()
             val buf = Unpooled.buffer(data.size)
-            LogUtil.d(TAG, "channelActive::do init proxy and data is: $data")
+            LogUtil.d(TAG, "channelActive::do init proxy and data is: ${data.contentToString()}")
             buf.writeBytes(data)
             ctx!!.writeAndFlush(buf)
         }
@@ -60,10 +61,10 @@ class LocalChannelAdapter(
                             LogUtil.d(TAG, "channelRead::PROXY_SOCKS_AUTH_NONE")
                             mProxyRequest = Constants.PROXY_REQUEST_CONNECT_TARGET_HOST
                             val hostIP: String? = getHostIP(mTargetIP)
-                            val proxyData: ByteArray? = Socks5Utils.getInstance()
-                                .buildProxySendConnectInfo(hostIP, mTargetPort.toByte())
+                            val proxyData: ByteArray? = Socks5Utils.getInstance().buildProxySendConnectInfo(hostIP, mTargetPort.toByte())
                             if (proxyData != null) {
                                 val bufHead = Unpooled.buffer(proxyData.size)
+                                LogUtil.d(TAG, "channelRead::PROXY_SOCKS_AUTH_NONE->send data is: ${proxyData.contentToString()}")
                                 bufHead.writeBytes(proxyData)
                                 ctx!!.writeAndFlush(bufHead)
                             } else {
@@ -110,6 +111,7 @@ class LocalChannelAdapter(
                     LogUtil.d(TAG, "channelRead::PROXY_REQUEST_CONNECT_TARGET_HOST")
                     if (data[0].toInt() == Constants.PROXY_SOCKS_VERION && data[1].toInt() == Constants.PROXY_CONNECT_SUCCESS) {
                         LogUtil.d(TAG, "channelRead::PROXY_CONNECT_SUCCESS")
+                        mIProxyStateChange?.proxyStateChange(false)
                     } else {
 
                     }
@@ -121,6 +123,7 @@ class LocalChannelAdapter(
         } else {
             mIChannelChange.channelDataChange(data)
         }
+        buf.retain()
     }
 
     /**
@@ -128,12 +131,13 @@ class LocalChannelAdapter(
      */
     private fun getHostIP(addressHost: String?): String? {
         try {
+            LogUtil.d(TAG, "getHostIP::in connect server ip is: $addressHost")
             if (TextUtils.isEmpty(addressHost)) {
                 throw IllegalArgumentException("target ip need not null when open simple proxy")
             }
             val address = InetAddress.getByName(addressHost)
             val hostAddress = address.hostAddress
-            LogUtil.d(TAG, "getHostIP::connect server ip is: $hostAddress")
+            LogUtil.d(TAG, "getHostIP::out connect server ip is: $hostAddress")
             return hostAddress
         } catch (e: Exception) {
             e.printStackTrace()
@@ -156,42 +160,8 @@ class LocalChannelAdapter(
         fun channelException(channel: Channel?, cause: Throwable?)
     }
 
-    inner class Builder {
-
-        private var localAdapter: LocalChannelAdapter? = null
-
-        /**
-        private var AuthPassword: String? = null
-         */
-        constructor(mIChannelChange: IChannelChange) {
-            localAdapter = LocalChannelAdapter(mIChannelChange)
-        }
-
-        fun setSimpleProxy(simpleProxy: Boolean): LocalChannelAdapter? {
-            localAdapter?.mSimpleProxy = simpleProxy
-            return localAdapter
-        }
-
-        fun setTargetIP(targetIP: String): LocalChannelAdapter? {
-            localAdapter?.mTargetIP = targetIP
-            return localAdapter
-        }
-
-        fun setTargetPort(targetPort: Int): LocalChannelAdapter? {
-            localAdapter?.mTargetPort = targetPort
-            return localAdapter
-        }
-
-        fun setAuthName(authName: String): LocalChannelAdapter? {
-            localAdapter?.mAuthName = authName
-            return localAdapter
-        }
-
-        fun setAuthPassword(authPassword: String): LocalChannelAdapter? {
-            localAdapter?.mAuthPassword = authPassword
-            return localAdapter
-        }
-
+    interface IProxyStateChange {
+        fun proxyStateChange(state: Boolean)
     }
 
 }
