@@ -1,7 +1,6 @@
 package jesson.com.nettyclinet.utils;
 
 
-
 public class LogUtil {
 
     private static int loglevel = Level.Level_HIGH.ordinal();

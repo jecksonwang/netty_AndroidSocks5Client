@@ -9,8 +9,9 @@ class Socks5Utils {
     private constructor(
     )
 
-    companion object{
-        private var instance:Socks5Utils? = null
+    companion object {
+        private var instance: Socks5Utils? = null
+
         @Synchronized
         fun getInstance(): Socks5Utils {
             synchronized(Socks5Utils::class.java) {
@@ -48,8 +49,10 @@ class Socks5Utils {
             data[0] = Constants.PROXY_SOCKS_VERION.toByte() //VER socks version 5
             data[1] = Constants.PROXY_SOCKS_RES_BY_TCP.toByte() //CMD 1:tcp, 3:udp
             data[2] = 0x00 //RSV default 0
-            data[3] = Constants.PROXY_SOCKS_ATYP_IPV4.toByte() //ATYP  1:ip4, 3:domain(string), 4:ip6
-            data[4] = split[0].toInt().toByte() //DST.ADDR if use 3(domin) this byte is the domain length
+            data[3] =
+                Constants.PROXY_SOCKS_ATYP_IPV4.toByte() //ATYP  1:ip4, 3:domain(string), 4:ip6
+            data[4] =
+                split[0].toInt().toByte() //DST.ADDR if use 3(domin) this byte is the domain length
             data[5] = split[1].toInt().toByte() //DST.ADDR
             data[6] = split[2].toInt().toByte() //DST.ADDR
             data[7] = split[3].toInt().toByte() //DST.ADDR

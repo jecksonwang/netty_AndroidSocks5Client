@@ -7,7 +7,7 @@ import android.net.NetworkInfo
 
 class NetworkUtils {
 
-    companion object{
+    companion object {
         fun isConnected(context: Context?): Boolean {
             val info: NetworkInfo? = getActiveNetworkInfo(context)
             return info != null && info.isConnected

@@ -15,6 +15,7 @@
  */
 
 package jesson.com.nettyclinet.decode;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
@@ -34,7 +35,9 @@ public class Socks5DelimiterBasedFrameDecoder extends ByteToMessageDecoder imple
     private final boolean failFast;
     private boolean discardingTooLongFrame;
     private int tooLongFrameLength;
-    /** Set only when decoding with "\n" and "\r\n" as the delimiter.  */
+    /**
+     * Set only when decoding with "\n" and "\r\n" as the delimiter.
+     */
     private final LocalLineBasedFrameDecoder lineBasedDecoder;
 
     private boolean mProxy;
@@ -53,7 +56,7 @@ public class Socks5DelimiterBasedFrameDecoder extends ByteToMessageDecoder imple
     public Socks5DelimiterBasedFrameDecoder(
             int maxFrameLength, boolean stripDelimiter, boolean failFast,
             ByteBuf delimiter) {
-        this(maxFrameLength, stripDelimiter, failFast, new ByteBuf[] {
+        this(maxFrameLength, stripDelimiter, failFast, new ByteBuf[]{
                 delimiter.slice(delimiter.readerIndex(), delimiter.readableBytes())});
     }
 
@@ -84,7 +87,7 @@ public class Socks5DelimiterBasedFrameDecoder extends ByteToMessageDecoder imple
             this.delimiters = null;
         } else {
             this.delimiters = new ByteBuf[delimiters.length];
-            for (int i = 0; i < delimiters.length; i ++) {
+            for (int i = 0; i < delimiters.length; i++) {
                 ByteBuf d = delimiters[i];
                 validateDelimiter(d);
                 this.delimiters[i] = d.slice(d.readerIndex(), d.readableBytes());
@@ -96,7 +99,9 @@ public class Socks5DelimiterBasedFrameDecoder extends ByteToMessageDecoder imple
         this.failFast = failFast;
     }
 
-    /** Returns true if the delimiters are "\n" and "\r\n".  */
+    /**
+     * Returns true if the delimiters are "\n" and "\r\n".
+     */
     private static boolean isLineBased(final ByteBuf[] delimiters) {
         if (delimiters.length != 2) {
             return false;
@@ -130,22 +135,22 @@ public class Socks5DelimiterBasedFrameDecoder extends ByteToMessageDecoder imple
     /**
      * Create a frame out of the {@link ByteBuf} and return it.
      *
-     * @param   ctx             the {@link ChannelHandlerContext} which this {@link ByteToMessageDecoder} belongs to
-     * @param   buffer          the {@link ByteBuf} from which to read data
-     * @return  frame           the {@link ByteBuf} which represent the frame or {@code null} if no frame could
-     *                          be created.
+     * @param ctx    the {@link ChannelHandlerContext} which this {@link ByteToMessageDecoder} belongs to
+     * @param buffer the {@link ByteBuf} from which to read data
+     * @return frame           the {@link ByteBuf} which represent the frame or {@code null} if no frame could
+     * be created.
      */
     protected Object decode(ChannelHandlerContext ctx, ByteBuf buffer) throws Exception {
-        if(mProxy){
+        if (mProxy) {
             return buffer.readSlice(buffer.readableBytes()).retain();
-        }else {
+        } else {
             if (lineBasedDecoder != null) {
                 return lineBasedDecoder.decode(ctx, buffer);
             }
             // Try all delimiters and choose the delimiter which yields the shortest frame.
             int minFrameLength = Integer.MAX_VALUE;
             ByteBuf minDelim = null;
-            for (ByteBuf delim: delimiters) {
+            for (ByteBuf delim : delimiters) {
                 int frameLength = indexOf(buffer, delim);
                 if (frameLength >= 0 && frameLength < minFrameLength) {
                     minFrameLength = frameLength;
@@ -225,14 +230,14 @@ public class Socks5DelimiterBasedFrameDecoder extends ByteToMessageDecoder imple
      * found in the haystack.
      */
     private static int indexOf(ByteBuf haystack, ByteBuf needle) {
-        for (int i = haystack.readerIndex(); i < haystack.writerIndex(); i ++) {
+        for (int i = haystack.readerIndex(); i < haystack.writerIndex(); i++) {
             int haystackIndex = i;
             int needleIndex;
-            for (needleIndex = 0; needleIndex < needle.capacity(); needleIndex ++) {
+            for (needleIndex = 0; needleIndex < needle.capacity(); needleIndex++) {
                 if (haystack.getByte(haystackIndex) != needle.getByte(needleIndex)) {
                     break;
                 } else {
-                    haystackIndex ++;
+                    haystackIndex++;
                     if (haystackIndex == haystack.writerIndex() &&
                             needleIndex != needle.capacity() - 1) {
                         return -1;
@@ -271,19 +276,19 @@ public class Socks5DelimiterBasedFrameDecoder extends ByteToMessageDecoder imple
         mProxy = state;
     }
 
-    public static class Builder{
+    public static class Builder {
         private Socks5DelimiterBasedFrameDecoder decoder;
 
-        public Builder(int maxFrameLength, ByteBuf delimiter){
+        public Builder(int maxFrameLength, ByteBuf delimiter) {
             decoder = new Socks5DelimiterBasedFrameDecoder(maxFrameLength, delimiter);
         }
 
-        public Builder setProxyState(boolean proxy){
+        public Builder setProxyState(boolean proxy) {
             decoder.mProxy = proxy;
             return this;
         }
 
-        public Socks5DelimiterBasedFrameDecoder build(){
+        public Socks5DelimiterBasedFrameDecoder build() {
             return decoder;
         }
     }

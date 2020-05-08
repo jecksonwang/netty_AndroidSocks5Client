@@ -61,10 +61,14 @@ class LocalChannelAdapter(
                             LogUtil.d(TAG, "channelRead::PROXY_SOCKS_AUTH_NONE")
                             mProxyRequest = Constants.PROXY_REQUEST_CONNECT_TARGET_HOST
                             val hostIP: String? = getHostIP(mTargetIP)
-                            val proxyData: ByteArray? = Socks5Utils.getInstance().buildProxySendConnectInfo(hostIP, mTargetPort.toByte())
+                            val proxyData: ByteArray? = Socks5Utils.getInstance()
+                                .buildProxySendConnectInfo(hostIP, mTargetPort.toByte())
                             if (proxyData != null) {
                                 val bufHead = Unpooled.buffer(proxyData.size)
-                                LogUtil.d(TAG, "channelRead::PROXY_SOCKS_AUTH_NONE->send data is: ${proxyData.contentToString()}")
+                                LogUtil.d(
+                                    TAG,
+                                    "channelRead::PROXY_SOCKS_AUTH_NONE->send data is: ${proxyData.contentToString()}"
+                                )
                                 bufHead.writeBytes(proxyData)
                                 ctx!!.writeAndFlush(bufHead)
                             } else {
@@ -89,13 +93,14 @@ class LocalChannelAdapter(
 
                     }
                 }
-                Constants.PROXY_REQUEST_AUTH_LOGIN->{
+                Constants.PROXY_REQUEST_AUTH_LOGIN -> {
                     LogUtil.d(TAG, "channelRead::PROXY_REQUEST_AUTH_LOGIN")
                     if (data.size == 2 && data[1].toInt() == Constants.PROXY_AUTH_SUCCESS) {
                         LogUtil.d(TAG, "channelRead::PROXY_REQUEST_AUTH_LOGIN do login")
                         mProxyRequest = Constants.PROXY_REQUEST_CONNECT_TARGET_HOST
                         val hostIP = getHostIP(mTargetIP)
-                        val proxySendConnectInfo: ByteArray? = Socks5Utils.getInstance().buildProxySendConnectInfo(hostIP, mTargetPort.toByte())
+                        val proxySendConnectInfo: ByteArray? = Socks5Utils.getInstance()
+                            .buildProxySendConnectInfo(hostIP, mTargetPort.toByte())
                         if (proxySendConnectInfo != null) {
                             val bufHead = Unpooled.buffer(proxySendConnectInfo.size)
                             bufHead.writeBytes(proxySendConnectInfo)
@@ -107,7 +112,7 @@ class LocalChannelAdapter(
                         LogUtil.d(TAG, "channelRead::proxy->auth error")
                     }
                 }
-                Constants.PROXY_REQUEST_CONNECT_TARGET_HOST->{
+                Constants.PROXY_REQUEST_CONNECT_TARGET_HOST -> {
                     LogUtil.d(TAG, "channelRead::PROXY_REQUEST_CONNECT_TARGET_HOST")
                     if (data[0].toInt() == Constants.PROXY_SOCKS_VERION && data[1].toInt() == Constants.PROXY_CONNECT_SUCCESS) {
                         LogUtil.d(TAG, "channelRead::PROXY_CONNECT_SUCCESS")
@@ -116,7 +121,7 @@ class LocalChannelAdapter(
 
                     }
                 }
-                else->{
+                else -> {
                     LogUtil.d(TAG, "channelRead::UNKNOWN PROXY")
                 }
             }

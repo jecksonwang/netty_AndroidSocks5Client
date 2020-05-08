@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
 
 class ClientCore {
 
-    companion object{
+    companion object {
         const val TAG = "ClientCore"
     }
 
@@ -51,11 +51,11 @@ class ClientCore {
         try {
             var f: ChannelFuture? = null
             val bootstrap = Bootstrap()
+            bootstrap.group(nioEventLoopGroup)
             bootstrap.channel(NioSocketChannel::class.java)
             bootstrap.option(ChannelOption.TCP_NODELAY, true)
             bootstrap.option(ChannelOption.SO_KEEPALIVE, true)
             bootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000)
-            bootstrap.group(nioEventLoopGroup)
             bootstrap.handler(object : ChannelInitializer<SocketChannel>() {
                 @Throws(Exception::class)
                 override fun initChannel(ch: SocketChannel) {
@@ -86,7 +86,7 @@ class ClientCore {
                         f.channel().close()
                     }
                 }
-            }else{
+            } else {
                 LogUtil.d(TAG, "connect::connect not done")
             }
             localChannelAdapter?.mIChannelChange?.channelStateChange(mChannel)
