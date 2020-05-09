@@ -14,8 +14,7 @@ class NetworkUtils {
         }
 
         /**
-         * 获取活动网络信息
-         * 需添加权限<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />`
+         * need <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />`
          * @return NetworkInfo
          */
         @SuppressLint("MissingPermission")

@@ -21,14 +21,12 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.TooLongFrameException;
 import jesson.com.nettyclinet.channeladapter.LocalChannelAdapter;
-import jesson.com.nettyclinet.core.ClientCore;
 import jesson.com.nettyclinet.utils.LogUtil;
 
 import java.util.List;
 
-
-public class Socks5DelimiterBasedFrameDecoder extends ByteToMessageDecoder implements LocalChannelAdapter.IProxyStateChange {
-    private final String TAG = "Socks5DecodeHandler";
+public class Socks5DelimiterBasedFrameDecoder extends LocalByteToMessageDecoder {
+    private final String TAG = "Socks5DelimiterBasedFrameDecoder";
     private final ByteBuf[] delimiters;
     private final int maxFrameLength;
     private final boolean stripDelimiter;
@@ -271,7 +269,7 @@ public class Socks5DelimiterBasedFrameDecoder extends ByteToMessageDecoder imple
     }
 
     @Override
-    public void proxyStateChange(boolean state) {
+    public void notifyProxyStateChange(boolean state) {
         LogUtil.d(TAG, "proxyStateChange::state is: " + state);
         mProxy = state;
     }

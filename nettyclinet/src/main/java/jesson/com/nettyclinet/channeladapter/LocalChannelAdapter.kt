@@ -6,24 +6,27 @@ import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
 import io.netty.channel.ChannelHandlerAdapter
 import io.netty.channel.ChannelHandlerContext
+import io.netty.handler.timeout.IdleState
+import io.netty.handler.timeout.IdleStateEvent
 import jesson.com.nettyclinet.utils.Constants
 import jesson.com.nettyclinet.utils.LogUtil
 import jesson.com.nettyclinet.utils.Socks5Utils
 import java.net.InetAddress
 
 class LocalChannelAdapter(
-    var mIChannelChange: IChannelChange
+    var mIChannelChange: IChannelChange?
 ) : ChannelHandlerAdapter() {
     /**
-     *  if use socks5,open simpleProxy,LocalChannelAdapter can auto handle socks5,and you must set mTargetIP,mTargetPort and mIProxyStateChange listener
-     *  if socks5 need auth,you also need set name and password,otherwise you need do it by yourself
+     *  if use socks5,open simpleProxy,LocalChannelAdapter can auto handle socks5,and you must set mTargetIP,mTargetPort
+     *  if socks5 need auth,you also need set name and password,if close simpleProxy you need do it by yourself
      */
     var mSimpleProxy: Boolean = false
     var mTargetIP: String? = null
     var mTargetPort: Int = 0
     var mAuthName: String? = null
     var mAuthPassword: String? = null
-    var mIProxyStateChange: IProxyStateChange? = null
+
+    var mINotifyProxyStateChange: INotifyProxyStateChange? = null
 
     companion object {
         const val TAG = "LocalChannelAdapter"
@@ -32,7 +35,7 @@ class LocalChannelAdapter(
     private var mProxyRequest: Int? = Constants.PROXY_REQUEST_NONE
 
     override fun channelActive(ctx: ChannelHandlerContext?) {
-        mIChannelChange.channelStateChange(ctx?.channel())
+        mIChannelChange?.channelStateChange(ctx?.channel(), true)
         if (mSimpleProxy) {
             mProxyRequest = Constants.PROXY_REQUEST_INIT
             val data: ByteArray = Socks5Utils.getInstance().buildProxyInitInfo()
@@ -44,7 +47,7 @@ class LocalChannelAdapter(
     }
 
     override fun channelInactive(ctx: ChannelHandlerContext?) {
-        mIChannelChange.channelStateChange(ctx?.channel())
+        mIChannelChange?.channelStateChange(ctx?.channel(), false)
     }
 
     override fun channelRead(ctx: ChannelHandlerContext?, msg: Any?) {
@@ -116,7 +119,7 @@ class LocalChannelAdapter(
                     LogUtil.d(TAG, "channelRead::PROXY_REQUEST_CONNECT_TARGET_HOST")
                     if (data[0].toInt() == Constants.PROXY_SOCKS_VERION && data[1].toInt() == Constants.PROXY_CONNECT_SUCCESS) {
                         LogUtil.d(TAG, "channelRead::PROXY_CONNECT_SUCCESS")
-                        mIProxyStateChange?.proxyStateChange(false)
+                        mINotifyProxyStateChange?.notifyProxyStateChange(false)
                     } else {
 
                     }
@@ -126,47 +129,61 @@ class LocalChannelAdapter(
                 }
             }
         } else {
-            mIChannelChange.channelDataChange(data)
+            mIChannelChange?.channelDataChange(data)
         }
         buf.retain()
     }
 
-    /**
-     *
-     */
+    override fun exceptionCaught(ctx: ChannelHandlerContext?, cause: Throwable?) {
+        mIChannelChange?.channelException(ctx?.channel(), cause)
+    }
+
+    override fun userEventTriggered(ctx: ChannelHandlerContext?, evt: Any?) {
+        if (evt is IdleStateEvent) {
+            when {
+                evt.state() == IdleState.READER_IDLE -> {
+                    LogUtil.d(TAG, "======READER_IDLE======")
+                    mIChannelChange?.channelReadIdle()
+                }
+                evt.state() == IdleState.WRITER_IDLE -> {
+                    LogUtil.d(TAG, "======WRITER_IDLE======")
+                    mIChannelChange?.channelWriteIdle()
+                }
+                evt.state() == IdleState.ALL_IDLE -> {
+                    LogUtil.d(TAG, "======ALL_IDLE======")
+                    mIChannelChange?.channelAllIdle()
+                }
+            }
+        }
+    }
+
+    interface IChannelChange {
+        fun channelStateChange(channel: Channel?, connectState: Boolean)
+        fun channelDataChange(msg: ByteArray?)
+        fun channelException(channel: Channel?, cause: Throwable?)
+        fun channelReadIdle()
+        fun channelWriteIdle()
+        fun channelAllIdle()
+
+    }
+
+    interface INotifyProxyStateChange {
+        fun notifyProxyStateChange(state: Boolean) //state: true means proxy connecting, false means proxy connected
+    }
+
     private fun getHostIP(addressHost: String?): String? {
         try {
-            LogUtil.d(TAG, "getHostIP::in connect server ip is: $addressHost")
             if (TextUtils.isEmpty(addressHost)) {
                 throw IllegalArgumentException("target ip need not null when open simple proxy")
             }
             val address = InetAddress.getByName(addressHost)
             val hostAddress = address.hostAddress
-            LogUtil.d(TAG, "getHostIP::out connect server ip is: $hostAddress")
+            LogUtil.d(TAG, "getHostIP::connect server ip is: $hostAddress")
             return hostAddress
         } catch (e: Exception) {
             e.printStackTrace()
         }
         return null
-    }
-
-    override fun exceptionCaught(ctx: ChannelHandlerContext?, cause: Throwable?) {
-        mIChannelChange.channelException(ctx?.channel(), cause)
-    }
-
-    override fun userEventTriggered(ctx: ChannelHandlerContext?, evt: Any?) {
-        mIChannelChange.channelEventTriggered(evt)
-    }
-
-    interface IChannelChange {
-        fun channelStateChange(channel: Channel?)
-        fun channelDataChange(msg: ByteArray?)
-        fun channelEventTriggered(evt: Any?)
-        fun channelException(channel: Channel?, cause: Throwable?)
-    }
-
-    interface IProxyStateChange {
-        fun proxyStateChange(state: Boolean)
     }
 
 }
