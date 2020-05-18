@@ -18,16 +18,16 @@ import jesson.com.nettyclinet.utils.LogUtil
 import jesson.com.nettyclinet.utils.NetworkUtils
 import java.util.concurrent.TimeUnit
 
-class ClientCore {
+class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParameter) {
 
     companion object {
         const val TAG = "ClientCore"
     }
 
-    private var mContext: Context? = null
+    private var mContext: Context? = ctx
     private var mChannel: Channel? = null
     private var mHandler: Handler? = null
-    private var mIGetT: IGetT? = null
+    private var mIGetNettyClientParameter: IGetNettyClientParameter? = iGetNettyClientParameter
 
     var mReadPingTimeOut: Long = 20000
     var mWritePingTimeOut: Long = 20000
@@ -41,10 +41,9 @@ class ClientCore {
     var mAutoReconnectFrequency: Int = 5
     var mAutoReconnectIntervalTime: Long = 2000
     private var mReconnectNum = 0 //Current number of reconnections
+    private var closeByUser: Boolean = false
 
-    constructor(ctx: Context, iGetT: IGetT) {
-        this.mContext = ctx
-        this.mIGetT = iGetT
+    init {
         mHandler = Handler(Looper.getMainLooper())
     }
 
@@ -67,8 +66,8 @@ class ClientCore {
             bootstrap.handler(object : ChannelInitializer<SocketChannel>() {
                 @Throws(Exception::class)
                 override fun initChannel(ch: SocketChannel) {
-                    byteToMessageDecoder = mIGetT?.getDecoder()
-                    localChannelAdapter = mIGetT?.getAdapter()
+                    byteToMessageDecoder = mIGetNettyClientParameter?.getMessageDecoder()
+                    localChannelAdapter = mIGetNettyClientParameter?.getChannelAdapter()
                     if (byteToMessageDecoder == null || localChannelAdapter == null) {
                         throw IllegalArgumentException("connect->message decoder is null or channel adapter is null, please check")
                     }
@@ -106,19 +105,40 @@ class ClientCore {
             } else {
                 LogUtil.d(TAG, "connect::connect not done")
             }
-            localChannelAdapter?.mIChannelChange?.channelStateChange(mChannel, false)
+            localChannelAdapter?.mIChannelChange?.channelStateChange(
+                mChannel, localChannelAdapter?.mSimpleProxy,
+                connectProxyState = false,
+                connectTargetState = false
+            )
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
             LogUtil.d(TAG, "do finally when channel close")
-            localChannelAdapter?.mINotifyProxyStateChange = null
-            nioEventLoopGroup?.shutdownGracefully()
-            nioEventLoopGroup = null
-            mChannel = null
-            doReconnect(host, port)
+            closeConnectInternal(host, port)
         }
     }
 
+    public fun closeConnect() {
+        closeByUser = true
+        doCloseConnect()
+    }
+
+    private fun closeConnectInternal(host: String, port: Int) {
+        if (!closeByUser) {
+            doCloseConnect()
+            doReconnect(host, port)
+        } else {
+            closeByUser = false //reset
+        }
+    }
+
+    private fun doCloseConnect() {
+        localChannelAdapter?.mINotifyProxyStateChange = null
+        nioEventLoopGroup?.shutdownGracefully()
+        nioEventLoopGroup = null
+        mChannel?.close()
+        mChannel = null
+    }
 
     private fun doReconnect(host: String, port: Int) {
         if (mAutoReconnect && NetworkUtils.isConnected(mContext)) {
@@ -137,9 +157,9 @@ class ClientCore {
         }
     }
 
-    interface IGetT {
-        fun getDecoder(): LocalByteToMessageDecoder
-        fun getAdapter(): LocalChannelAdapter
+    interface IGetNettyClientParameter {
+        fun getMessageDecoder(): LocalByteToMessageDecoder
+        fun getChannelAdapter(): LocalChannelAdapter
     }
 
 }

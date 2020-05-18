@@ -3,11 +3,8 @@ package jesson.com.nettyclinet.utils
 import android.text.TextUtils
 import java.lang.ref.WeakReference
 
-class Socks5Utils {
+class Socks5Utils private constructor() {
 
-
-    private constructor(
-    )
 
     companion object {
         private var instance: Socks5Utils? = null
@@ -23,14 +20,13 @@ class Socks5Utils {
         }
     }
 
-
     /**
      * send init request info to proxy server
      */
     fun buildProxyInitInfo(): ByteArray {
         val data = ByteArray(4)
         data[0] = Constants.PROXY_SOCKS_VERION.toByte() //VER socks version 5
-        data[1] = 0x02 //NMETHODS auth method num
+        data[1] = 0x02 //auth method num,there are two, one is no auth and other is name and password
         data[2] = Constants.PROXY_SOCKS_AUTH_NONE.toByte() //no auth
         data[3] = Constants.PROXY_SOCKS_AUTH_NAMEPASSWORD.toByte() //username password auth
         return data

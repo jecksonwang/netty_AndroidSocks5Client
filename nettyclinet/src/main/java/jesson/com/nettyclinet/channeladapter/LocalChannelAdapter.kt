@@ -35,7 +35,7 @@ class LocalChannelAdapter(
     private var mProxyRequest: Int? = Constants.PROXY_REQUEST_NONE
 
     override fun channelActive(ctx: ChannelHandlerContext?) {
-        mIChannelChange?.channelStateChange(ctx?.channel(), true)
+        mIChannelChange?.channelStateChange(ctx?.channel(), mSimpleProxy, mSimpleProxy, !mSimpleProxy)
         if (mSimpleProxy) {
             mProxyRequest = Constants.PROXY_REQUEST_INIT
             val data: ByteArray = Socks5Utils.getInstance().buildProxyInitInfo()
@@ -47,7 +47,11 @@ class LocalChannelAdapter(
     }
 
     override fun channelInactive(ctx: ChannelHandlerContext?) {
-        mIChannelChange?.channelStateChange(ctx?.channel(), false)
+        mIChannelChange?.channelStateChange(
+            ctx?.channel(), mSimpleProxy,
+            connectProxyState = false,
+            connectTargetState = false
+        )
     }
 
     override fun channelRead(ctx: ChannelHandlerContext?, msg: Any?) {
@@ -76,6 +80,11 @@ class LocalChannelAdapter(
                                 ctx!!.writeAndFlush(bufHead)
                             } else {
                                 LogUtil.d(TAG, "channelRead::proxy->send prxoy error")
+                                mIChannelChange?.channelStateChange(
+                                    ctx?.channel(), mSimpleProxy,
+                                    connectProxyState = false,
+                                    connectTargetState = false
+                                )
                             }
                         } else if (data[1].toInt() == Constants.PROXY_SOCKS_AUTH_NAMEPASSWORD) {
                             LogUtil.d(TAG, "channelRead::PROXY_SOCKS_AUTH_NAMEPASSWORD")
@@ -88,12 +97,20 @@ class LocalChannelAdapter(
                                 ctx!!.writeAndFlush(bufAuthInfo)
                             } else {
                                 LogUtil.d(TAG, "channelRead::proxy->send auth error")
+                                mIChannelChange?.channelStateChange(
+                                    ctx?.channel(), mSimpleProxy,
+                                    connectProxyState = false,
+                                    connectTargetState = false
+                                )
                             }
                         } else {
                             LogUtil.d(TAG, "channelRead::PRPXY_SOCKS_AUTH_ERROR")
+                            mIChannelChange?.channelStateChange(
+                                ctx?.channel(), mSimpleProxy,
+                                connectProxyState = false,
+                                connectTargetState = false
+                            )
                         }
-                    } else {
-
                     }
                 }
                 Constants.PROXY_REQUEST_AUTH_LOGIN -> {
@@ -158,7 +175,12 @@ class LocalChannelAdapter(
     }
 
     interface IChannelChange {
-        fun channelStateChange(channel: Channel?, connectState: Boolean)
+        /**
+         * @param openProxy whether open proxy function
+         * @param connectProxyState if open proxy function, need check proxy connect state first, or the state always false
+         * @param connectTargetState whether connect the target server
+         */
+        fun channelStateChange(channel: Channel?, openProxy: Boolean?, connectProxyState: Boolean, connectTargetState: Boolean)
         fun channelDataChange(msg: ByteArray?)
         fun channelException(channel: Channel?, cause: Throwable?)
         fun channelReadIdle()
