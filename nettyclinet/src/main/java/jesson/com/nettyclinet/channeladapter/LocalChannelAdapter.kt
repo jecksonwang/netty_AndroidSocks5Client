@@ -9,6 +9,7 @@ import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.timeout.IdleState
 import io.netty.handler.timeout.IdleStateEvent
 import jesson.com.nettyclinet.utils.Constants
+import jesson.com.nettyclinet.utils.Error
 import jesson.com.nettyclinet.utils.LogUtil
 import jesson.com.nettyclinet.utils.Socks5Utils
 import java.net.InetAddress
@@ -28,6 +29,8 @@ class LocalChannelAdapter(
 
     var mINotifyProxyStateChange: INotifyProxyStateChange? = null
 
+    var mINotifyClientCoreConnectState: INotifyClientCoreConnectState? = null
+
     companion object {
         const val TAG = "LocalChannelAdapter"
     }
@@ -35,22 +38,28 @@ class LocalChannelAdapter(
     private var mProxyRequest: Int? = Constants.PROXY_REQUEST_NONE
 
     override fun channelActive(ctx: ChannelHandlerContext?) {
-        mIChannelChange?.channelStateChange(ctx?.channel(), mSimpleProxy, mSimpleProxy, !mSimpleProxy)
+        mIChannelChange?.channelStateChange(
+            mSimpleProxy,
+            mSimpleProxy,
+            !mSimpleProxy,
+            Error.NO_ERROR
+        )
         if (mSimpleProxy) {
             mProxyRequest = Constants.PROXY_REQUEST_INIT
             val data: ByteArray = Socks5Utils.getInstance().buildProxyInitInfo()
             val buf = Unpooled.buffer(data.size)
             LogUtil.d(TAG, "channelActive::do init proxy and data is: ${data.contentToString()}")
             buf.writeBytes(data)
-            ctx!!.writeAndFlush(buf)
+            ctx?.writeAndFlush(buf)
+        } else {
+            mINotifyClientCoreConnectState?.notifyClientCoreConnectSuccess(ctx?.channel())
         }
     }
 
     override fun channelInactive(ctx: ChannelHandlerContext?) {
         mIChannelChange?.channelStateChange(
-            ctx?.channel(), mSimpleProxy,
-            connectProxyState = false,
-            connectTargetState = false
+            mSimpleProxy, connectProxyState = false, connectTargetState = false,
+            errorCode = Error.CHANNEL_INACTIVE
         )
     }
 
@@ -59,94 +68,129 @@ class LocalChannelAdapter(
         val data = ByteArray(buf.readableBytes())
         buf.readBytes(data)
         LogUtil.d(TAG, "channelRead::receive data is: " + data.contentToString())
-        if (mSimpleProxy) {
-            when (mProxyRequest) {
-                Constants.PROXY_REQUEST_INIT -> {
-                    LogUtil.d(TAG, "channelRead::PROXY_REQUEST_INIT")
-                    if (data.size == 2 && data[0].toInt() == Constants.PROXY_SOCKS_VERION) {
-                        if (data[1].toInt() == Constants.PROXY_SOCKS_AUTH_NONE) {
-                            LogUtil.d(TAG, "channelRead::PROXY_SOCKS_AUTH_NONE")
+        if (data.isEmpty()) {
+            LogUtil.d(TAG, "channelRead::receive null data")
+        } else {
+            if (mSimpleProxy) {
+                when (mProxyRequest) {
+                    Constants.PROXY_REQUEST_INIT -> {
+                        LogUtil.d(TAG, "channelRead::PROXY_REQUEST_INIT")
+                        if (data.size == 2 && data[0].toInt() == Constants.PROXY_SOCKS_VERION) {
+                            if (data[1].toInt() == Constants.PROXY_SOCKS_NO_AUTH) {
+                                LogUtil.d(TAG, "channelRead::PROXY_SOCKS_NO_AUTH")
+                                mProxyRequest = Constants.PROXY_REQUEST_CONNECT_TARGET_HOST
+                                val hostIP: String? = getHostIP(mTargetIP)
+                                val proxyData: ByteArray? = Socks5Utils.getInstance()
+                                    .buildProxySendConnectInfo(hostIP, mTargetPort.toByte())
+                                if (proxyData != null) {
+                                    val bufHead = Unpooled.buffer(proxyData.size)
+                                    bufHead.writeBytes(proxyData)
+                                    ctx?.writeAndFlush(bufHead)
+                                } else {
+                                    LogUtil.d(TAG, "channelRead::proxy->send prxoy error")
+                                    mIChannelChange?.channelStateChange(
+                                        mSimpleProxy,
+                                        connectProxyState = false,
+                                        connectTargetState = false,
+                                        errorCode = Error.PROXY_CONNECT_INFO_NONE
+                                    )
+                                }
+                            } else if (data[1].toInt() == Constants.PROXY_SOCKS_AUTH) {
+                                LogUtil.d(TAG, "channelRead::PROXY_SOCKS_AUTH")
+                                mProxyRequest = Constants.PROXY_REQUEST_AUTH_LOGIN
+                                if (TextUtils.isEmpty(mAuthName) || TextUtils.isEmpty(mAuthPassword)) {
+                                    LogUtil.d(TAG, "channelRead::auth name or pwd is null")
+                                    mINotifyClientCoreConnectState?.notifyClientCoreProxyAuthError()
+                                    mIChannelChange?.channelStateChange(
+                                        mSimpleProxy,
+                                        connectProxyState = false,
+                                        connectTargetState = false,
+                                        errorCode = Error.AUTH_NAMEPASSWORD_INVALID
+                                    )
+                                } else {
+                                    val authInfo: ByteArray? = Socks5Utils.getInstance()
+                                        .buildProxyAuthInfo(mAuthName, mAuthPassword)
+                                    if (authInfo != null) {
+                                        val bufAuthInfo = Unpooled.buffer(authInfo.size)
+                                        bufAuthInfo.writeBytes(authInfo)
+                                        ctx?.writeAndFlush(bufAuthInfo)
+                                    } else {
+                                        LogUtil.d(TAG, "channelRead::proxy->send auth error")
+                                        mIChannelChange?.channelStateChange(
+                                            mSimpleProxy,
+                                            connectProxyState = true,
+                                            connectTargetState = false,
+                                            errorCode = Error.PROXY_AUTH_INFO_NONE
+                                        )
+                                    }
+                                }
+                            } else {
+                                LogUtil.e(TAG, "channelRead::UNKNOWN_PROXY_AUTH")
+                            }
+                        }
+                    }
+                    Constants.PROXY_REQUEST_AUTH_LOGIN -> {
+                        LogUtil.d(TAG, "channelRead::PROXY_REQUEST_AUTH_LOGIN")
+                        if (data.size == 2 && data[1].toInt() == Constants.PROXY_AUTH_SUCCESS) {
+                            LogUtil.d(TAG, "channelRead::PROXY_REQUEST_AUTH_LOGIN do login")
                             mProxyRequest = Constants.PROXY_REQUEST_CONNECT_TARGET_HOST
-                            val hostIP: String? = getHostIP(mTargetIP)
-                            val proxyData: ByteArray? = Socks5Utils.getInstance()
+                            val hostIP = getHostIP(mTargetIP)
+                            val proxySendConnectInfo: ByteArray? = Socks5Utils.getInstance()
                                 .buildProxySendConnectInfo(hostIP, mTargetPort.toByte())
-                            if (proxyData != null) {
-                                val bufHead = Unpooled.buffer(proxyData.size)
-                                LogUtil.d(
-                                    TAG,
-                                    "channelRead::PROXY_SOCKS_AUTH_NONE->send data is: ${proxyData.contentToString()}"
-                                )
-                                bufHead.writeBytes(proxyData)
+                            if (proxySendConnectInfo != null) {
+                                val bufHead = Unpooled.buffer(proxySendConnectInfo.size)
+                                bufHead.writeBytes(proxySendConnectInfo)
                                 ctx!!.writeAndFlush(bufHead)
                             } else {
-                                LogUtil.d(TAG, "channelRead::proxy->send prxoy error")
+                                LogUtil.d(TAG, "channelRead::proxy->do login send prxoy error")
                                 mIChannelChange?.channelStateChange(
-                                    ctx?.channel(), mSimpleProxy,
-                                    connectProxyState = false,
-                                    connectTargetState = false
-                                )
-                            }
-                        } else if (data[1].toInt() == Constants.PROXY_SOCKS_AUTH_NAMEPASSWORD) {
-                            LogUtil.d(TAG, "channelRead::PROXY_SOCKS_AUTH_NAMEPASSWORD")
-                            mProxyRequest = Constants.PROXY_REQUEST_AUTH_LOGIN
-                            val authInfo: ByteArray? = Socks5Utils.getInstance()
-                                .buildProxyAuthInfo(mAuthName, mAuthPassword)
-                            if (authInfo != null) {
-                                val bufAuthInfo = Unpooled.buffer(authInfo.size)
-                                bufAuthInfo.writeBytes(authInfo)
-                                ctx!!.writeAndFlush(bufAuthInfo)
-                            } else {
-                                LogUtil.d(TAG, "channelRead::proxy->send auth error")
-                                mIChannelChange?.channelStateChange(
-                                    ctx?.channel(), mSimpleProxy,
-                                    connectProxyState = false,
-                                    connectTargetState = false
+                                    mSimpleProxy,
+                                    connectProxyState = true,
+                                    connectTargetState = false,
+                                    errorCode = Error.PROXY_CONNECT_INFO_NONE
                                 )
                             }
                         } else {
-                            LogUtil.d(TAG, "channelRead::PRPXY_SOCKS_AUTH_ERROR")
+                            LogUtil.d(TAG, "channelRead::proxy->auth fail")
+                            mINotifyClientCoreConnectState?.notifyClientCoreProxyAuthError()
                             mIChannelChange?.channelStateChange(
-                                ctx?.channel(), mSimpleProxy,
-                                connectProxyState = false,
-                                connectTargetState = false
+                                mSimpleProxy,
+                                connectProxyState = true,
+                                connectTargetState = false,
+                                errorCode = Error.PROXY_AUTH_FAIL
                             )
                         }
                     }
-                }
-                Constants.PROXY_REQUEST_AUTH_LOGIN -> {
-                    LogUtil.d(TAG, "channelRead::PROXY_REQUEST_AUTH_LOGIN")
-                    if (data.size == 2 && data[1].toInt() == Constants.PROXY_AUTH_SUCCESS) {
-                        LogUtil.d(TAG, "channelRead::PROXY_REQUEST_AUTH_LOGIN do login")
-                        mProxyRequest = Constants.PROXY_REQUEST_CONNECT_TARGET_HOST
-                        val hostIP = getHostIP(mTargetIP)
-                        val proxySendConnectInfo: ByteArray? = Socks5Utils.getInstance()
-                            .buildProxySendConnectInfo(hostIP, mTargetPort.toByte())
-                        if (proxySendConnectInfo != null) {
-                            val bufHead = Unpooled.buffer(proxySendConnectInfo.size)
-                            bufHead.writeBytes(proxySendConnectInfo)
-                            ctx!!.writeAndFlush(bufHead)
+                    Constants.PROXY_REQUEST_CONNECT_TARGET_HOST -> {
+                        LogUtil.d(TAG, "channelRead::PROXY_REQUEST_CONNECT_TARGET_HOST")
+                        val result = data[1].toInt()
+                        if (data[0].toInt() == Constants.PROXY_SOCKS_VERION && result == Constants.PROXY_CONNECT_SUCCESS) {
+                            LogUtil.d(TAG, "channelRead::PROXY_CONNECT_SUCCESS")
+                            mINotifyClientCoreConnectState?.notifyClientCoreConnectSuccess(ctx?.channel())
+                            mINotifyProxyStateChange?.notifyProxyStateChange(false)
+                            mIChannelChange?.channelStateChange(
+                                mSimpleProxy,
+                                connectProxyState = true,
+                                connectTargetState = true,
+                                errorCode = Error.NO_ERROR
+                            )
                         } else {
-                            LogUtil.d(TAG, "channelRead::proxy->do login send prxoy error")
+                            LogUtil.d(TAG, "channelRead::PROXY_CONNECT_FAIL, fail info is: $result")
+                            mIChannelChange?.channelStateChange(
+                                mSimpleProxy,
+                                connectProxyState = true,
+                                connectTargetState = false,
+                                errorCode = result
+                            )
                         }
-                    } else {
-                        LogUtil.d(TAG, "channelRead::proxy->auth error")
+                    }
+                    else -> {
+                        LogUtil.e(TAG, "channelRead::UNKNOWN PROXY")
                     }
                 }
-                Constants.PROXY_REQUEST_CONNECT_TARGET_HOST -> {
-                    LogUtil.d(TAG, "channelRead::PROXY_REQUEST_CONNECT_TARGET_HOST")
-                    if (data[0].toInt() == Constants.PROXY_SOCKS_VERION && data[1].toInt() == Constants.PROXY_CONNECT_SUCCESS) {
-                        LogUtil.d(TAG, "channelRead::PROXY_CONNECT_SUCCESS")
-                        mINotifyProxyStateChange?.notifyProxyStateChange(false)
-                    } else {
-
-                    }
-                }
-                else -> {
-                    LogUtil.d(TAG, "channelRead::UNKNOWN PROXY")
-                }
+            } else {
+                mIChannelChange?.channelDataChange(data)
             }
-        } else {
-            mIChannelChange?.channelDataChange(data)
         }
         buf.retain()
     }
@@ -179,8 +223,15 @@ class LocalChannelAdapter(
          * @param openProxy whether open proxy function
          * @param connectProxyState if open proxy function, need check proxy connect state first, or the state always false
          * @param connectTargetState whether connect the target server
+         * @param errorCode code in jesson.com.nettyclinet.utils.Error
          */
-        fun channelStateChange(channel: Channel?, openProxy: Boolean?, connectProxyState: Boolean, connectTargetState: Boolean)
+        fun channelStateChange(
+            openProxy: Boolean?,
+            connectProxyState: Boolean,
+            connectTargetState: Boolean,
+            errorCode: Int
+        )
+
         fun channelDataChange(msg: ByteArray?)
         fun channelException(channel: Channel?, cause: Throwable?)
         fun channelReadIdle()
@@ -191,6 +242,11 @@ class LocalChannelAdapter(
 
     interface INotifyProxyStateChange {
         fun notifyProxyStateChange(state: Boolean) //state: true means proxy connecting, false means proxy connected
+    }
+
+    interface INotifyClientCoreConnectState {
+        fun notifyClientCoreConnectSuccess(channel: Channel?)
+        fun notifyClientCoreProxyAuthError()
     }
 
     private fun getHostIP(addressHost: String?): String? {

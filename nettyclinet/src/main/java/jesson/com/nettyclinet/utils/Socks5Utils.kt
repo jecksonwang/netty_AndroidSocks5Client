@@ -27,8 +27,8 @@ class Socks5Utils private constructor() {
         val data = ByteArray(4)
         data[0] = Constants.PROXY_SOCKS_VERION.toByte() //VER socks version 5
         data[1] = 0x02 //auth method num,there are two, one is no auth and other is name and password
-        data[2] = Constants.PROXY_SOCKS_AUTH_NONE.toByte() //no auth
-        data[3] = Constants.PROXY_SOCKS_AUTH_NAMEPASSWORD.toByte() //username password auth
+        data[2] = Constants.PROXY_SOCKS_NO_AUTH.toByte() //no auth
+        data[3] = Constants.PROXY_SOCKS_AUTH.toByte() //username password auth
         return data
     }
 
@@ -63,9 +63,6 @@ class Socks5Utils private constructor() {
      * build auth info to proxy server
      */
     fun buildProxyAuthInfo(name: String?, password: String?): ByteArray? {
-        if (TextUtils.isEmpty(name) || TextUtils.isEmpty(password)) {
-            throw IllegalArgumentException("buildProxyAuthInfo-->auth name or auth password is null,please check")
-        }
         val data = byteArrayOf(Constants.PROXY_SOCKS_AUTH_VERSION.toByte())
         val nameLen = byteArrayOf(name!!.length.toString().toByte())
         val passwordLen = byteArrayOf(password!!.length.toString().toByte())

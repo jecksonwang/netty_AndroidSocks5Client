@@ -9,7 +9,9 @@ import jesson.com.nettyclinet.channeladapter.LocalChannelAdapter
 import jesson.com.nettyclinet.core.ClientCore
 import jesson.com.nettyclinet.decode.LocalByteToMessageDecoder
 import jesson.com.nettyclinet.decode.Socks5DelimiterBasedFrameDecoder
+import jesson.com.nettyclinet.decode.Socks5LineBasedFrameDecoder
 import jesson.com.nettyclinet.utils.LogUtil
+import kotlinx.android.synthetic.main.activity_main.*
 
 class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, ClientCore.IGetNettyClientParameter {
 
@@ -20,19 +22,15 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, Cl
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        val thread = Thread(Runnable {
-            LogUtil.d(TAG, "thread run")
-            val clientCore = ClientCore(this, this)
-            clientCore.connect("xxx.xxx.xx.xx", 1080) //add your real proxy ip and port
-        })
-        thread.start()
+        val clientCore = ClientCore(this, this)
+        clientCore.startClintWithSimpleThread("5.252.161.48", 1080) //add your real proxy ip and port
+        close_connect.setOnClickListener {
+            clientCore.closeConnect()
+        }
     }
 
-    override fun channelStateChange(channel: Channel?, openProxy: Boolean?, connectProxyState: Boolean, connectTargetState: Boolean) {
-        val open = channel?.isOpen
-        val active = channel?.isActive
-        LogUtil.d(TAG, "open is: $open and active is: $active and openProxy is: $openProxy and connectProxyState is: $connectProxyState connect is: $connectTargetState")
+    override fun channelStateChange(openProxy: Boolean?, connectProxyState: Boolean, connectTargetState: Boolean, errorCode: Int) {
+        LogUtil.d(TAG, "openProxy is: $openProxy and connectProxyState is: $connectProxyState connect is: $connectTargetState and error code is: $errorCode")
     }
 
     override fun channelDataChange(msg: ByteArray?) {
@@ -52,8 +50,13 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, Cl
     }
 
     override fun getMessageDecoder(): LocalByteToMessageDecoder {
-        val buf: ByteBuf = Unpooled.copiedBuffer(TAG.toByteArray())
+
+        /*val buf: ByteBuf = Unpooled.copiedBuffer(TAG.toByteArray())
         return Socks5DelimiterBasedFrameDecoder.Builder(100000, buf)
+            .setProxyState(true)
+            .build()*/
+
+        return Socks5LineBasedFrameDecoder.Builder(100000)
             .setProxyState(true)
             .build()
     }
@@ -61,8 +64,8 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, Cl
     override fun getChannelAdapter(): LocalChannelAdapter {
         return LocalChannelAdapter(this@MainActivity).apply {
             mSimpleProxy = true
-            mTargetIP = "xx.xx.xx" //add your real target ip
-            mTargetPort = 123      //add your real target port
+            mTargetIP = "x.x.x.x" //add your real target ip
+            mTargetPort = 80      //add your real target port
         }
     }
 

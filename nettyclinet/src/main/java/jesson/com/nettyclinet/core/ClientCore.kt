@@ -14,11 +14,13 @@ import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.timeout.IdleStateHandler
 import jesson.com.nettyclinet.channeladapter.LocalChannelAdapter
 import jesson.com.nettyclinet.decode.LocalByteToMessageDecoder
+import jesson.com.nettyclinet.utils.Error
 import jesson.com.nettyclinet.utils.LogUtil
 import jesson.com.nettyclinet.utils.NetworkUtils
 import java.util.concurrent.TimeUnit
 
-class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParameter) {
+class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParameter) :
+    LocalChannelAdapter.INotifyClientCoreConnectState {
 
     companion object {
         const val TAG = "ClientCore"
@@ -41,10 +43,19 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
     var mAutoReconnectFrequency: Int = 5
     var mAutoReconnectIntervalTime: Long = 2000
     private var mReconnectNum = 0 //Current number of reconnections
-    private var closeByUser: Boolean = false
+    private var stopAutoReconnect: Boolean = false
 
     init {
         mHandler = Handler(Looper.getMainLooper())
+    }
+
+    public fun startClintWithSimpleThread(host: String, port: Int) {
+        val thread = Thread(Runnable {
+            LogUtil.d(TAG, "thread run")
+            connect(host, port)
+            LogUtil.d(TAG, "thread run release")
+        })
+        thread.start()
     }
 
     fun connect(host: String, port: Int) {
@@ -73,6 +84,7 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
                     }
                     localChannelAdapter?.apply {
                         mINotifyProxyStateChange = byteToMessageDecoder
+                        mINotifyClientCoreConnectState = this@ClientCore
                     }
                     ch.pipeline().addLast("localDecoder", byteToMessageDecoder)
                     ch.pipeline().addLast(
@@ -93,8 +105,6 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
                 LogUtil.d(TAG, "connect::connect done")
                 if (f.isSuccess) {
                     LogUtil.d(TAG, "connect::connect success")
-                    mReconnectNum = 0 //when connect success reset it
-                    mChannel = f.channel()
                     f.channel().closeFuture().sync()
                 } else {
                     LogUtil.d(TAG, "connect::connect fail")
@@ -105,34 +115,37 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
             } else {
                 LogUtil.d(TAG, "connect::connect not done")
             }
-            localChannelAdapter?.mIChannelChange?.channelStateChange(
-                mChannel, localChannelAdapter?.mSimpleProxy,
-                connectProxyState = false,
-                connectTargetState = false
-            )
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
             LogUtil.d(TAG, "do finally when channel close")
+            localChannelAdapter?.mIChannelChange?.channelStateChange(
+                localChannelAdapter?.mSimpleProxy,
+                connectProxyState = false,
+                connectTargetState = false,
+                errorCode = Error.CONNECT_RELEASE
+            )
             closeConnectInternal(host, port)
         }
     }
 
     public fun closeConnect() {
-        closeByUser = true
+        mReconnectNum = 0
+        stopAutoReconnect = true
         doCloseConnect()
     }
 
     private fun closeConnectInternal(host: String, port: Int) {
-        if (!closeByUser) {
+        if (!stopAutoReconnect) {
             doCloseConnect()
             doReconnect(host, port)
         } else {
-            closeByUser = false //reset
+            stopAutoReconnect = false //reset
         }
     }
 
     private fun doCloseConnect() {
+        localChannelAdapter?.mINotifyClientCoreConnectState = null
         localChannelAdapter?.mINotifyProxyStateChange = null
         nioEventLoopGroup?.shutdownGracefully()
         nioEventLoopGroup = null
@@ -149,12 +162,29 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
                 return
             } else {
                 mHandler?.postDelayed({
-                    mReconnectNum++
-                    LogUtil.d(TAG, "doReconnect::current retry num is: $mReconnectNum")
-                    connect(host, port)
+                    if(!stopAutoReconnect){
+                        mReconnectNum++
+                        LogUtil.d(TAG, "doReconnect::current retry num is: $mReconnectNum")
+                        startClintWithSimpleThread(host, port)
+                    }else{
+                        mReconnectNum = 0
+                        LogUtil.d(TAG, "doReconnect::stop reconnect by stop")
+                    }
                 }, mAutoReconnectIntervalTime)
             }
         }
+    }
+
+    override fun notifyClientCoreConnectSuccess(channel: Channel?) {
+        LogUtil.d(TAG, "notifyClientCoreConnectSuccess::channel state is: ${channel?.isOpen}")
+        mReconnectNum = 0 //when connect target success, reset it
+        mChannel = channel
+    }
+
+    override fun notifyClientCoreProxyAuthError() {
+        LogUtil.d(TAG, "notifyClientCoreProxyAuthError::stop auto reconnect")
+        mReconnectNum = 0
+        stopAutoReconnect = true //if proxy auth error by proxy server, stop reconnect, and notify user by IChannelChange.channelStateChange
     }
 
     interface IGetNettyClientParameter {
