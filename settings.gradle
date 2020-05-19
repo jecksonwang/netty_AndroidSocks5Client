@@ -1,3 +1,3 @@
 rootProject.name='NettyClient'
 include ':app'
-include ':nettyclinet'
+include ':nettyclient'

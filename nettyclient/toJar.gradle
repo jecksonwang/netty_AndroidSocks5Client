@@ -1,0 +1,11 @@
+def oldjarName = "socks_netty_v1.1"
+def jarName = "socks_netty_v1.2"
+
+task makeJar(type: Copy) {
+    delete 'build/libs/' + oldjarName + ".jar"
+    from("build/intermediates/aar_main_jar/release")
+    into('build/libs/')
+    include('classes.jar')
+    rename('classes.jar', jarName + ".jar")
+}
+makeJar.dependsOn(build)
