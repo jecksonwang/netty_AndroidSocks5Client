@@ -1,8 +1,18 @@
 package cn.jesson.nettyclient.core
 
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
+import cn.jesson.nettyclient.channeladapter.LocalChannelAdapter
+import cn.jesson.nettyclient.decode.LocalByteToMessageDecoder
+import cn.jesson.nettyclient.server.ForegroundServer
+import cn.jesson.nettyclient.utils.Error
+import cn.jesson.nettyclient.utils.LogUtil
+import cn.jesson.nettyclient.utils.NetworkUtils
 import io.netty.bootstrap.Bootstrap
 import io.netty.channel.Channel
 import io.netty.channel.ChannelFuture
@@ -12,15 +22,10 @@ import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.channel.socket.SocketChannel
 import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.timeout.IdleStateHandler
-import cn.jesson.nettyclient.channeladapter.LocalChannelAdapter
-import cn.jesson.nettyclient.decode.LocalByteToMessageDecoder
-import cn.jesson.nettyclient.utils.Error
-import cn.jesson.nettyclient.utils.LogUtil
-import cn.jesson.nettyclient.utils.NetworkUtils
 import java.util.concurrent.TimeUnit
 
 class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParameter) :
-    LocalChannelAdapter.INotifyClientCoreConnectState {
+    LocalChannelAdapter.INotifyClientCoreConnectState, ForegroundServer.IClientAction {
 
     companion object {
         const val TAG = "ClientCore"
@@ -30,6 +35,13 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
     private var mChannel: Channel? = null
     private var mHandler: Handler? = null
     private var mIGetNettyClientParameter: IGetNettyClientParameter? = iGetNettyClientParameter
+    private var mHost: String? = null
+    private var mPort: Int? = null
+
+    private var mServiceConnection: CustomServiceConnection? = null
+    private var mBindServer: Boolean = false
+
+    private var mStartType: Int = 0
 
     var mReadPingTimeOut: Long = 20000
     var mWritePingTimeOut: Long = 20000
@@ -49,13 +61,29 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
         mHandler = Handler(Looper.getMainLooper())
     }
 
-    public fun startClintWithSimpleThread(host: String, port: Int) {
+    fun startClintWithSimpleThread(host: String, port: Int) {
+        LogUtil.d(TAG, "startClintWithSimpleThread")
+        mStartType = 1
         val thread = Thread(Runnable {
-            LogUtil.d(TAG, "thread run")
+            LogUtil.d(TAG, "startClintWithSimpleThread::thread run")
             connect(host, port)
-            LogUtil.d(TAG, "thread run release")
+            LogUtil.d(TAG, "startClintWithSimpleThread::thread release")
         })
         thread.start()
+    }
+
+    fun startClientWithServer(host: String, port: Int) {
+        LogUtil.d(TAG, "startClientWithServer::mBindServer is: $mBindServer")
+        ForegroundServer.setActionListener(this)
+        mStartType = 2
+        if (!mBindServer) {
+            LogUtil.d(TAG, "startClientWithServer::do bind server")
+            this.mHost = host
+            this.mPort = port
+            bindClientServer(mContext)
+        } else {
+            startClientWithServerInternal(mContext, host, port)
+        }
     }
 
     fun connect(host: String, port: Int) {
@@ -129,7 +157,8 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
         }
     }
 
-    public fun closeConnect() {
+    fun closeConnect() {
+        LogUtil.d(TAG, "closeConnect")
         mReconnectNum = 0
         stopAutoReconnect = true
         doCloseConnect()
@@ -145,6 +174,8 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
     }
 
     private fun doCloseConnect() {
+        LogUtil.d(TAG, "doCloseConnect")
+        ForegroundServer.removeActionListener()
         localChannelAdapter?.mINotifyClientCoreConnectState = null
         localChannelAdapter?.mINotifyProxyStateChange = null
         nioEventLoopGroup?.shutdownGracefully()
@@ -162,11 +193,18 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
                 return
             } else {
                 mHandler?.postDelayed({
-                    if(!stopAutoReconnect){
+                    if (!stopAutoReconnect) {
                         mReconnectNum++
                         LogUtil.d(TAG, "doReconnect::current retry num is: $mReconnectNum")
-                        startClintWithSimpleThread(host, port)
-                    }else{
+                        when(mStartType){
+                            1->{
+                                startClintWithSimpleThread(host, port)
+                            }
+                            2->{
+                                startClientWithServer(host, port) //restart internal
+                            }
+                        }
+                    } else {
                         mReconnectNum = 0
                         LogUtil.d(TAG, "doReconnect::stop reconnect by stop")
                     }
@@ -174,6 +212,58 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
             }
         }
     }
+
+    fun checkConnectState(tag: String): Boolean {
+        if (mChannel != null && mChannel!!.isOpen && mChannel!!.isActive) {
+            LogUtil.d(TAG, "checkConnectState::connect ok check tag is: $tag")
+            return true
+        }
+        LogUtil.d(TAG, "checkConnectState::connect bad check tag is: $tag")
+        return false
+    }
+
+
+    private fun startClientWithServerInternal(
+        context: Context?,
+        host: String?,
+        port: Int?
+    ) {
+        if (context == null || host == null || port == null) {
+            LogUtil.e(TAG, "startClientWithServerInternal::start error please check param")
+            return
+        }
+        ForegroundServer.startClientWithServer(context, host, port)
+    }
+
+    private fun bindClientServer(context: Context?) {
+        if (context == null) {
+            LogUtil.e(TAG, "bindClientServer::context is null")
+            return
+        }
+        if (mServiceConnection == null) {
+            mServiceConnection = CustomServiceConnection()
+        }
+        val intent = Intent(context, ForegroundServer::class.java)
+        context.bindService(intent, mServiceConnection!!, Context.BIND_AUTO_CREATE)
+    }
+
+    inner class CustomServiceConnection : ServiceConnection {
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            LogUtil.d(TAG, "onServiceDisconnected")
+            mBindServer = false
+        }
+
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            LogUtil.d(TAG, "onServiceConnected")
+            mBindServer = true
+            val client: ForegroundServer.GetNettyClient = service as ForegroundServer.GetNettyClient
+            val server = client.getServer()
+            server.startForegroundNotify()
+            startClientWithServerInternal(mContext, mHost, mPort)
+        }
+    }
+
 
     override fun notifyClientCoreConnectSuccess(channel: Channel?) {
         LogUtil.d(TAG, "notifyClientCoreConnectSuccess::channel state is: ${channel?.isOpen}")
@@ -184,7 +274,17 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
     override fun notifyClientCoreProxyAuthError() {
         LogUtil.d(TAG, "notifyClientCoreProxyAuthError::stop auto reconnect")
         mReconnectNum = 0
-        stopAutoReconnect = true //if proxy auth error by proxy server, stop reconnect, and notify user by IChannelChange.channelStateChange
+        stopAutoReconnect =
+            true //if proxy auth error by proxy server, stop reconnect, and notify user by IChannelChange.channelStateChange
+    }
+
+    override fun actionConnect(host: String, port: Int) {
+        LogUtil.d(TAG, "actionConnect::host is: $host and port is: $port")
+        connect(host, port)
+    }
+
+    override fun actionCheckConnect(): Boolean {
+        return checkConnectState("actionCheckConnect")
     }
 
     interface IGetNettyClientParameter {

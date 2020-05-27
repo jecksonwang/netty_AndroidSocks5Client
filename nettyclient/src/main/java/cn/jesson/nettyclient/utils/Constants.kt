@@ -20,4 +20,6 @@ object Constants {
     const val PROXY_AUTH_SUCCESS = 0x00
     const val PROXY_CONNECT_SUCCESS = 0x00
 
+    const val FOREGROUND_SERVER_NOTIFY_ID = 100
+
 }

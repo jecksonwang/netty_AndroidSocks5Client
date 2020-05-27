@@ -8,6 +8,7 @@ import cn.jesson.nettyclient.core.ClientCore
 import cn.jesson.nettyclient.decode.LocalByteToMessageDecoder
 import cn.jesson.nettyclient.decode.Socks5LineBasedFrameDecoder
 import cn.jesson.nettyclient.utils.LogUtil
+import cn.jesson.nettyclient.utils.StartClientUtils
 import kotlinx.android.synthetic.main.activity_main.*
 
 class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, ClientCore.IGetNettyClientParameter {
@@ -19,8 +20,7 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, Cl
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        val clientCore = ClientCore(this, this)
-        clientCore.startClintWithSimpleThread("5.252.161.48", 1080) //add your real proxy ip and port
+        val clientCore = StartClientUtils.getInstance().startClientWithServer(this, this, "5.252.161.48", 1080)
         close_connect.setOnClickListener {
             clientCore.closeConnect()
         }
@@ -61,8 +61,8 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, Cl
     override fun getChannelAdapter(): LocalChannelAdapter {
         return LocalChannelAdapter(this@MainActivity).apply {
             mSimpleProxy = true
-            mTargetIP = "3.0.32.68" //add your real target ip
-            mTargetPort = 80      //add your real target port
+            mTargetIP = "x.x.x.x" //add your real target ip
+            mTargetPort = 1      //add your real target port
         }
     }
 
