@@ -24,14 +24,24 @@ import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.timeout.IdleStateHandler
 import java.util.concurrent.TimeUnit
 
-class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParameter) :
+class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGetNettyClientParameter) :
     LocalChannelAdapter.INotifyClientCoreConnectState, ForegroundServer.IClientAction {
 
     companion object {
         const val TAG = "ClientCore"
+        private var instance: ClientCore? = null
+        @Synchronized
+        fun getInstance(ctx: Context, iGetNettyClientParameter: IGetNettyClientParameter): ClientCore{
+            if(instance == null){
+                synchronized(ClientCore){
+                    instance = ClientCore(ctx, iGetNettyClientParameter)
+                }
+            }
+            return instance!!
+        }
     }
 
-    private var mContext: Context? = ctx
+    private var mContext: Context? = ctx.applicationContext
     private var mChannel: Channel? = null
     private var mHandler: Handler? = null
     private var mIGetNettyClientParameter: IGetNettyClientParameter? = iGetNettyClientParameter
@@ -47,15 +57,16 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
     var mWritePingTimeOut: Long = 20000
     var mAllPingTimeOut: Long = 0
 
-    var byteToMessageDecoder: LocalByteToMessageDecoder? = null
-    var localChannelAdapter: LocalChannelAdapter? = null
-    var nioEventLoopGroup: NioEventLoopGroup? = null
+    private var byteToMessageDecoder: LocalByteToMessageDecoder? = null
+    private var localChannelAdapter: LocalChannelAdapter? = null
+    private var nioEventLoopGroup: NioEventLoopGroup? = null
 
-    var mAutoReconnect: Boolean = true
-    var mAutoReconnectFrequency: Int = 5
-    var mAutoReconnectIntervalTime: Long = 2000
+    private var mAutoReconnect: Boolean = true
+    private var mAutoReconnectFrequency: Int = 5
+    private var mAutoReconnectIntervalTime: Long = 2000
     private var mReconnectNum = 0 //Current number of reconnection
     private var stopAutoReconnect: Boolean = false
+
 
     init {
         mHandler = Handler(Looper.getMainLooper())
@@ -147,12 +158,14 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
             e.printStackTrace()
         } finally {
             LogUtil.d(TAG, "do finally when channel close")
-            localChannelAdapter?.mIChannelChange?.channelStateChange(
-                localChannelAdapter?.mSimpleProxy,
-                connectProxyState = false,
-                connectTargetState = false,
-                errorCode = Error.CONNECT_RELEASE
-            )
+            mHandler?.post {
+                localChannelAdapter?.mIChannelChange?.channelStateChange(
+                    localChannelAdapter?.mSimpleProxy,
+                    connectProxyState = false,
+                    connectTargetState = false,
+                    errorCode = Error.CONNECT_RELEASE
+                )
+            }
             closeConnectInternal(host, port)
         }
     }
@@ -196,11 +209,11 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
                     if (!stopAutoReconnect) {
                         mReconnectNum++
                         LogUtil.d(TAG, "doReconnect::current retry num is: $mReconnectNum")
-                        when(mStartType){
-                            1->{
+                        when (mStartType) {
+                            1 -> {
                                 startClintWithSimpleThread(host, port)
                             }
-                            2->{
+                            2 -> {
                                 startClientWithServer(host, port) //restart internal
                             }
                         }
@@ -222,6 +235,20 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
         return false
     }
 
+    fun reConnectServer(host: String, port: Int){
+        val checkConnectState = checkConnectState("reConnectServer")
+        LogUtil.d(TAG, "reConnectServer::checkConnectState is: $checkConnectState")
+        if(!checkConnectState){
+            when (mStartType) {
+                1 -> {
+                    startClintWithSimpleThread(host, port)
+                }
+                2 -> {
+                    startClientWithServer(host, port) //restart internal
+                }
+            }
+        }
+    }
 
     private fun startClientWithServerInternal(
         context: Context?,
@@ -244,10 +271,14 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
             mServiceConnection = CustomServiceConnection()
         }
         val intent = Intent(context, ForegroundServer::class.java)
-        context.bindService(intent, mServiceConnection!!, Context.BIND_AUTO_CREATE)
+        context.applicationContext.bindService(
+            intent,
+            mServiceConnection!!,
+            Context.BIND_AUTO_CREATE
+        )
     }
 
-    inner class CustomServiceConnection : ServiceConnection {
+    private inner class CustomServiceConnection : ServiceConnection {
 
         override fun onServiceDisconnected(name: ComponentName?) {
             LogUtil.d(TAG, "onServiceDisconnected")
@@ -260,7 +291,7 @@ class ClientCore(ctx: Context, iGetNettyClientParameter: IGetNettyClientParamete
             val client: ForegroundServer.GetNettyClient = service as ForegroundServer.GetNettyClient
             val server = client.getServer()
             server.startForegroundNotify()
-            startClientWithServerInternal(mContext, mHost, mPort)
+            startClientWithServerInternal(mContext, mHost, mPort) //services connected
         }
     }
 

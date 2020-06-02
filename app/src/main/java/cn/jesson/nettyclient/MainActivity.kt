@@ -20,14 +20,55 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, Cl
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        LogUtil.d(TAG, "====================onCreate====================")
+        server_state.text = String.format(resources.getString(R.string.server_state), "disconnect")
         val clientCore = StartClientUtils.getInstance().startClientWithServer(this, this, "5.252.161.48", 1080)
         close_connect.setOnClickListener {
             clientCore.closeConnect()
         }
+        reconnect.setOnClickListener{
+            clientCore.reConnectServer("5.252.161.48", 1080)
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        LogUtil.d(TAG, "====================onStart====================")
+    }
+
+    override fun onRestart() {
+        super.onRestart()
+        LogUtil.d(TAG, "====================onRestart====================")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        LogUtil.d(TAG, "====================onResume====================")
+    }
+
+    override fun onPause() {
+        super.onPause()
+        LogUtil.d(TAG, "====================onPause====================")
+    }
+
+    override fun onStop() {
+        super.onStop()
+        LogUtil.d(TAG, "====================onStop====================")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        LogUtil.d(TAG, "====================onDestroy====================")
+
     }
 
     override fun channelStateChange(openProxy: Boolean?, connectProxyState: Boolean, connectTargetState: Boolean, errorCode: Int) {
         LogUtil.d(TAG, "openProxy is: $openProxy and connectProxyState is: $connectProxyState connect is: $connectTargetState and error code is: $errorCode")
+        if(connectTargetState){
+            server_state.text = String.format(resources.getString(R.string.server_state), "connect")
+        }else{
+            server_state.text = String.format(resources.getString(R.string.server_state), "disconnect")
+        }
     }
 
     override fun channelDataChange(msg: ByteArray?) {

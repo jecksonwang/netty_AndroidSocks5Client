@@ -8,7 +8,6 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import androidx.core.content.ContextCompat.startForegroundService
-import cn.jesson.nettyclient.core.ClientCore
 import cn.jesson.nettyclient.notification.ServiceNotificationUtils
 import cn.jesson.nettyclient.utils.Constants
 import cn.jesson.nettyclient.utils.LogUtil
@@ -22,11 +21,11 @@ class ForegroundServer : IntentService("nettyForegroundServer") {
 
         private var mClientAction: IClientAction? = null
 
-        fun setActionListener(action: IClientAction){
+        fun setActionListener(action: IClientAction) {
             mClientAction = action
         }
 
-        fun removeActionListener(){
+        fun removeActionListener() {
             mClientAction = null
         }
 
@@ -35,11 +34,20 @@ class ForegroundServer : IntentService("nettyForegroundServer") {
             host: String,
             port: Int
         ) {
-            val intent = Intent(context, ForegroundServer::class.java)
-            intent.putExtra("host", host)
-            intent.putExtra("port", port)
-            intent.action = "action_start_netty_client"
-            startForegroundService(context, intent)
+            if(mClientAction == null){
+                LogUtil.e(TAG, "startClientWithServer::start server fail by client action is null")
+                return
+            }
+            val actionCheckConnect = mClientAction!!.actionCheckConnect()
+            if (!actionCheckConnect) {
+                val intent = Intent(context, ForegroundServer::class.java)
+                intent.putExtra("host", host)
+                intent.putExtra("port", port)
+                intent.action = "action_start_netty_client"
+                startForegroundService(context, intent)
+            } else {
+                LogUtil.d(TAG, "startClientWithServer::start server fail by server is ok")
+            }
         }
     }
 
@@ -59,7 +67,7 @@ class ForegroundServer : IntentService("nettyForegroundServer") {
             return
         }
         val actionCheckConnect = mClientAction!!.actionCheckConnect()
-        if(actionCheckConnect){
+        if (actionCheckConnect) {
             LogUtil.d(TAG, "onHandleIntent::server is ok no need start")
             return
         }

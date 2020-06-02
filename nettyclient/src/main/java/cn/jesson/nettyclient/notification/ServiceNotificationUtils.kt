@@ -40,7 +40,7 @@ class ServiceNotificationUtils private constructor() {
     }
 
     fun setContext(context: Context){
-        this.mContext = context
+        this.mContext = context.applicationContext
     }
 
     @TargetApi(Build.VERSION_CODES.O)

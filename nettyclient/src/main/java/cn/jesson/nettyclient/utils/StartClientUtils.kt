@@ -34,7 +34,7 @@ class StartClientUtils private constructor() {
     ): ClientCore {
         synchronized(StartClientUtils) {
             LogUtil.d(TAG, "startClientWithSimpleThread::host is: $host and port is: $port")
-            val clientCore = ClientCore(context, iGetNettyClientParameter)
+            val clientCore = ClientCore.getInstance(context, iGetNettyClientParameter)
             clientCore.startClintWithSimpleThread(host, port)
             return clientCore
         }
@@ -47,7 +47,7 @@ class StartClientUtils private constructor() {
     ): ClientCore {
         synchronized(StartClientUtils) {
             LogUtil.d(TAG, "startClientWithServer::host is: $host and port is: $port")
-            val clientCore = ClientCore(context, iGetNettyClientParameter)
+            val clientCore = ClientCore.getInstance(context, iGetNettyClientParameter)
             clientCore.startClientWithServer(host, port) //start by user
             return clientCore
         }

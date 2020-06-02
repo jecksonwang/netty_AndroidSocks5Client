@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">NettyClient</string>
+    <string name="server_state">Server State: %1$s</string>
 </resources>
