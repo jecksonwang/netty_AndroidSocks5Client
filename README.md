@@ -23,5 +23,11 @@ android socks5 client based on netty
   （1）使用普通线程 startClientWithSimpleThread
 
   （2）使用后台Service startClientWithServer 注：使用Service方式请在manifest中注册服务
+  
+============2020年6月2日更新============
 
+1.添加reconnect方法
 
+2.添加了默认的线程切换，保证回调到界面后，都是在主线程
+
+3.将ClientCore改为单例模式，修复部分BUG
