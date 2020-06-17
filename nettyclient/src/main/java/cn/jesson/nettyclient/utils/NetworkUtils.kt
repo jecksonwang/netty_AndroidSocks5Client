@@ -21,7 +21,6 @@ class NetworkUtils {
         private fun getActiveNetworkInfo(context: Context?): NetworkInfo? {
             val manager =
                 context?.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-                    ?: return null
             return manager.activeNetworkInfo
         }
     }

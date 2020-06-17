@@ -1,11 +1,22 @@
-def oldjarName = "socks_netty_v1.1"
-def jarName = "socks_netty_v1.2"
+def oldjarName = "socks_netty_v1.0"
+def jarName = "socks_netty_v1.1"
 
-task makeJar(type: Copy) {
+task makeJar(type: Jar ) {
     delete 'build/libs/' + oldjarName + ".jar"
-    from("build/intermediates/aar_main_jar/release")
-    into('build/libs/')
-    include('classes.jar')
-    rename('classes.jar', jarName + ".jar")
+    def fileName = jarName
+    archivesBaseName = fileName
+    from file('src/main/java/')
+    from(project.zipTree('build/intermediates/aar_main_jar/release/classes.jar'))
+    from(project.zipTree("libs/netty-all-5.0.0.Alpha2.jar"))
+    destinationDirectory = file('build/libs')
+    include("cn/jesson/nettyclient/**/*.class")
+    include("cn/jesson/nettyclient/**/*.java")
+    include("cn/jesson/nettyclient/**/*.kt")
+    include("io/netty/**/*.class")
+    include("io/netty/**/*.java")
+    include("io/netty/**/**/*.class")
+    include("io/netty/**/**/*.java")
+    include("io/netty/**/**/**/*.class")
+    include("io/netty/**/**/**/*.java")
 }
 makeJar.dependsOn(build)

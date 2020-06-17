@@ -1,24 +1,30 @@
 package cn.jesson.nettyclient.notification
 
 import android.annotation.TargetApi
+import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
-import cn.jesson.nettyclient.R
+import androidx.core.app.NotificationCompat
 import cn.jesson.nettyclient.utils.Constants
 
 class ServiceNotificationUtils private constructor() {
-    private var mContext: Context? = null
+    private var mContext: Application? = null
     private var manager: NotificationManager? = null
-        private get() {
+        get() {
             if (field == null) {
                 field =
                     mContext!!.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             }
             return field
         }
+
+    var mKeepLive: Boolean = false
+    var mTitle: String = "foreground server"
+    var mContent: String = "we are running"
+    var mSmallIcon: Int? = null
 
     companion object {
         private const val TAG = "ServiceNotificationUtils"
@@ -39,8 +45,11 @@ class ServiceNotificationUtils private constructor() {
             }
     }
 
-    fun setContext(context: Context){
-        this.mContext = context.applicationContext
+    fun initContext(context: Application) {
+        this.mContext = context
+        if (mSmallIcon == null) {
+            mSmallIcon = mContext?.applicationInfo?.icon
+        }
     }
 
     @TargetApi(Build.VERSION_CODES.O)
@@ -51,27 +60,47 @@ class ServiceNotificationUtils private constructor() {
     }
 
     @TargetApi(Build.VERSION_CODES.O)
-    fun getChannelNotification(title: String?, content: String?): Notification.Builder {
+    private fun getChannelNotification(): Notification.Builder {
         return Notification.Builder(mContext, id)
-            .setContentTitle(title)
-            .setContentText(content)
-            .setSmallIcon(R.drawable.ic_launcher)
-            .setAutoCancel(false)
+            .setContentTitle(mTitle)
+            .setContentText(mContent)
+            .setSmallIcon(mSmallIcon!!)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun getNotification_25(): NotificationCompat.Builder {
+        return NotificationCompat.Builder(mContext)
+            .setContentTitle(mTitle)
+            .setContentText(mContent)
+            .setSmallIcon(mSmallIcon!!)
+            .setOngoing(mKeepLive)
+    }
+
+    fun getNotification(): Notification {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getChannelNotification().build()
+        } else {
+            getNotification_25().build()
+        }
     }
 
     fun sendNotification(notification: Notification?) {
-        if (Build.VERSION.SDK_INT >= 26) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             createNotificationChannel()
-            manager?.notify(Constants.FOREGROUND_SERVER_NOTIFY_ID, notification)
+        }else{
+            if(!mKeepLive){
+                return
+            }
         }
+        manager?.notify(Constants.FOREGROUND_SERVER_NOTIFY_ID, notification)
     }
 
     fun clearAllNotify() {
         try {
-            if (Build.VERSION.SDK_INT >= 26) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 createNotificationChannel()
-                manager?.cancelAll()
             }
+            manager?.cancelAll()
         } catch (r: Exception) {
             r.printStackTrace()
         }

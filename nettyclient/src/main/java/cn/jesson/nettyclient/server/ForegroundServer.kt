@@ -21,19 +21,15 @@ class ForegroundServer : IntentService("nettyForegroundServer") {
 
         private var mClientAction: IClientAction? = null
 
-        fun setActionListener(action: IClientAction) {
+        internal fun setActionListener(action: IClientAction) {
             mClientAction = action
         }
 
-        fun removeActionListener() {
+        internal fun removeActionListener() {
             mClientAction = null
         }
 
-        fun startClientWithServer(
-            context: Context,
-            host: String,
-            port: Int
-        ) {
+        internal fun startClientWithServer(context: Context, host: String, port: Int) {
             if(mClientAction == null){
                 LogUtil.e(TAG, "startClientWithServer::start server fail by client action is null")
                 return
@@ -61,7 +57,11 @@ class ForegroundServer : IntentService("nettyForegroundServer") {
     }
 
     override fun onHandleIntent(intent: Intent?) {
-        LogUtil.d(TAG, "onHandleIntent::in")
+        val mKeepLive = ServiceNotificationUtils.instance?.mKeepLive
+        LogUtil.d(TAG, "onHandleIntent::in mKeepLive is: $mKeepLive")
+        if(mKeepLive != null && !mKeepLive){
+            removeNotify()
+        }
         if (mClientAction == null) {
             LogUtil.e(TAG, "onHandleIntent::start server fail by client action is null")
             return
@@ -88,16 +88,12 @@ class ForegroundServer : IntentService("nettyForegroundServer") {
         }
     }
 
-    fun startForegroundNotify() {
-        if (Build.VERSION.SDK_INT >= 26) {
+    internal fun startForegroundNotify() {
+        LogUtil.d(TAG, "startForegroundNotify")
+        val build: Notification = ServiceNotificationUtils.instance?.getNotification()!!
+        ServiceNotificationUtils.instance?.sendNotification(build)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
-                LogUtil.d(TAG, "startForegroundNotify")
-                ServiceNotificationUtils.instance?.setContext(this)
-                val build: Notification = ServiceNotificationUtils.instance?.getChannelNotification(
-                    "foreground server",
-                    "we are running"
-                )!!.build()
-                ServiceNotificationUtils.instance?.sendNotification(build)
                 startForeground(Constants.FOREGROUND_SERVER_NOTIFY_ID, build)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -105,7 +101,13 @@ class ForegroundServer : IntentService("nettyForegroundServer") {
         }
     }
 
-    interface IClientAction {
+    private fun removeNotify(){
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
+            stopForeground(true)
+        }
+    }
+
+    internal interface IClientAction {
         fun actionConnect(host: String, port: Int)
         fun actionCheckConnect(): Boolean
     }

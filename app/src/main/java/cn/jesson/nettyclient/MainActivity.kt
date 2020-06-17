@@ -2,16 +2,19 @@ package cn.jesson.nettyclient
 
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import io.netty.channel.Channel
 import cn.jesson.nettyclient.channeladapter.LocalChannelAdapter
 import cn.jesson.nettyclient.core.ClientCore
 import cn.jesson.nettyclient.decode.LocalByteToMessageDecoder
 import cn.jesson.nettyclient.decode.Socks5LineBasedFrameDecoder
+import cn.jesson.nettyclient.utils.ConnectState
 import cn.jesson.nettyclient.utils.LogUtil
 import cn.jesson.nettyclient.utils.StartClientUtils
 import kotlinx.android.synthetic.main.activity_main.*
 
-class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, ClientCore.IGetNettyClientParameter {
+class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange,
+    ClientCore.IClientParameterCallBack {
+
+    private var mClientCore: ClientCore? = null
 
     companion object {
         const val TAG = "MainActivity"
@@ -22,12 +25,13 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, Cl
         setContentView(R.layout.activity_main)
         LogUtil.d(TAG, "====================onCreate====================")
         server_state.text = String.format(resources.getString(R.string.server_state), "disconnect")
-        val clientCore = StartClientUtils.getInstance().startClientWithServer(this, this, "5.252.161.48", 1080)
+        mClientCore = StartClientUtils.getInstance()
+            .startClientWithServer(application, this, this, "109.74.144.130", 1080, false)
         close_connect.setOnClickListener {
-            clientCore.closeConnect()
+            mClientCore?.closeConnect()
         }
-        reconnect.setOnClickListener{
-            clientCore.reConnectServer("5.252.161.48", 1080)
+        reconnect.setOnClickListener {
+            mClientCore?.reConnectServer("109.74.144.130", 1080)
         }
     }
 
@@ -44,6 +48,11 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, Cl
     override fun onResume() {
         super.onResume()
         LogUtil.d(TAG, "====================onResume====================")
+        mClientCore?.resetClientListener(this, this, this)
+        val checkConnectState = mClientCore?.checkConnectState(TAG)
+        if(checkConnectState != null && checkConnectState){
+            server_state.text = String.format(resources.getString(R.string.server_state), "connect")
+        }
     }
 
     override fun onPause() {
@@ -59,15 +68,29 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, Cl
     override fun onDestroy() {
         super.onDestroy()
         LogUtil.d(TAG, "====================onDestroy====================")
-
+        mClientCore?.removeClientListener()
     }
 
-    override fun channelStateChange(openProxy: Boolean?, connectProxyState: Boolean, connectTargetState: Boolean, errorCode: Int) {
-        LogUtil.d(TAG, "openProxy is: $openProxy and connectProxyState is: $connectProxyState connect is: $connectTargetState and error code is: $errorCode")
-        if(connectTargetState){
+    override fun channelStateChange(
+        openProxy: Boolean?,
+        connectProxyState: Boolean,
+        connectTargetState: Boolean,
+        connectStateCode: Int) {
+        LogUtil.d(TAG, "channelStateChange::openProxy is: $openProxy and connectProxyState is: $connectProxyState " +
+                "connect is: $connectTargetState and connect state code is: $connectStateCode")
+        if (connectTargetState) {
+            LogUtil.d(TAG, "channelStateChange::show connect")
             server_state.text = String.format(resources.getString(R.string.server_state), "connect")
-        }else{
-            server_state.text = String.format(resources.getString(R.string.server_state), "disconnect")
+        } else {
+            if(connectStateCode == ConnectState.CONNECTING){
+                LogUtil.d(TAG, "channelStateChange::show connecting")
+                server_state.text =
+                    String.format(resources.getString(R.string.server_state), "connecting")
+            }else{
+                LogUtil.d(TAG, "channelStateChange::show disconnect")
+                server_state.text =
+                    String.format(resources.getString(R.string.server_state), "disconnect")
+            }
         }
     }
 
@@ -75,15 +98,18 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, Cl
     }
 
     override fun channelReadIdle() {
+        LogUtil.d(TAG, "======READER_IDLE======")
     }
 
     override fun channelWriteIdle() {
+        LogUtil.d(TAG, "======READER_IDLE======")
     }
 
     override fun channelAllIdle() {
+        LogUtil.d(TAG, "======READER_IDLE======")
     }
 
-    override fun channelException(channel: Channel?, cause: Throwable?) {
+    override fun channelException(cause: Throwable?) {
         LogUtil.d(TAG, "error is: ${cause?.printStackTrace()}")
     }
 
@@ -100,7 +126,7 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange, Cl
     }
 
     override fun getChannelAdapter(): LocalChannelAdapter {
-        return LocalChannelAdapter(this@MainActivity).apply {
+        return LocalChannelAdapter().apply {
             mSimpleProxy = true
             mTargetIP = "x.x.x.x" //add your real target ip
             mTargetPort = 1      //add your real target port

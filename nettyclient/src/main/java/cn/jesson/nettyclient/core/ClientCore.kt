@@ -10,7 +10,7 @@ import android.os.Looper
 import cn.jesson.nettyclient.channeladapter.LocalChannelAdapter
 import cn.jesson.nettyclient.decode.LocalByteToMessageDecoder
 import cn.jesson.nettyclient.server.ForegroundServer
-import cn.jesson.nettyclient.utils.Error
+import cn.jesson.nettyclient.utils.ConnectState
 import cn.jesson.nettyclient.utils.LogUtil
 import cn.jesson.nettyclient.utils.NetworkUtils
 import io.netty.bootstrap.Bootstrap
@@ -24,38 +24,49 @@ import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.timeout.IdleStateHandler
 import java.util.concurrent.TimeUnit
 
-class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGetNettyClientParameter) :
+class ClientCore private constructor(
+    private var mContext: Context?,
+    private var mIClientParameterCallBack: IClientParameterCallBack?,
+    private var mIChannelChange: LocalChannelAdapter.IChannelChange?
+) :
     LocalChannelAdapter.INotifyClientCoreConnectState, ForegroundServer.IClientAction {
 
     companion object {
         const val TAG = "ClientCore"
         private var instance: ClientCore? = null
+
         @Synchronized
-        fun getInstance(ctx: Context, iGetNettyClientParameter: IGetNettyClientParameter): ClientCore{
-            if(instance == null){
-                synchronized(ClientCore){
-                    instance = ClientCore(ctx, iGetNettyClientParameter)
+        fun getInstance(
+            ctx: Context,
+            iClientParameterCallBack: IClientParameterCallBack,
+            iChannelChange: LocalChannelAdapter.IChannelChange
+        ): ClientCore {
+            if (instance == null) {
+                synchronized(ClientCore) {
+                    LogUtil.d(TAG, "getInstance::create new instance")
+                    instance = ClientCore(ctx, iClientParameterCallBack, iChannelChange)
                 }
+            } else {
+                this.instance!!.mContext = ctx
+                this.instance!!.mIClientParameterCallBack = iClientParameterCallBack
+                this.instance!!.mIChannelChange = iChannelChange
             }
             return instance!!
         }
     }
 
-    private var mContext: Context? = ctx.applicationContext
+    var mReadPingTimeOut: Long = 20000
+    var mWritePingTimeOut: Long = 20000
+    var mAllPingTimeOut: Long = 0
+
     private var mChannel: Channel? = null
     private var mHandler: Handler? = null
-    private var mIGetNettyClientParameter: IGetNettyClientParameter? = iGetNettyClientParameter
     private var mHost: String? = null
     private var mPort: Int? = null
 
     private var mServiceConnection: CustomServiceConnection? = null
     private var mBindServer: Boolean = false
-
-    private var mStartType: Int = 0
-
-    var mReadPingTimeOut: Long = 20000
-    var mWritePingTimeOut: Long = 20000
-    var mAllPingTimeOut: Long = 0
+    private var mStartType: Int = 0 //1 for simple thread, 2 for service
 
     private var byteToMessageDecoder: LocalByteToMessageDecoder? = null
     private var localChannelAdapter: LocalChannelAdapter? = null
@@ -72,7 +83,7 @@ class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGe
         mHandler = Handler(Looper.getMainLooper())
     }
 
-    fun startClintWithSimpleThread(host: String, port: Int) {
+    internal fun startClintWithSimpleThread(host: String, port: Int) {
         LogUtil.d(TAG, "startClintWithSimpleThread")
         mStartType = 1
         val thread = Thread(Runnable {
@@ -83,7 +94,7 @@ class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGe
         thread.start()
     }
 
-    fun startClientWithServer(host: String, port: Int) {
+    internal fun startClientWithServer(host: String, port: Int) {
         LogUtil.d(TAG, "startClientWithServer::mBindServer is: $mBindServer")
         ForegroundServer.setActionListener(this)
         mStartType = 2
@@ -102,6 +113,7 @@ class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGe
         if (!NetworkUtils.isConnected(mContext)) {
             return
         }
+        showConnectState(ConnectState.CONNECTING)
         if (nioEventLoopGroup == null) {
             nioEventLoopGroup = NioEventLoopGroup()
         }
@@ -116,14 +128,15 @@ class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGe
             bootstrap.handler(object : ChannelInitializer<SocketChannel>() {
                 @Throws(Exception::class)
                 override fun initChannel(ch: SocketChannel) {
-                    byteToMessageDecoder = mIGetNettyClientParameter?.getMessageDecoder()
-                    localChannelAdapter = mIGetNettyClientParameter?.getChannelAdapter()
+                    byteToMessageDecoder = mIClientParameterCallBack?.getMessageDecoder()
+                    localChannelAdapter = mIClientParameterCallBack?.getChannelAdapter()
                     if (byteToMessageDecoder == null || localChannelAdapter == null) {
                         throw IllegalArgumentException("connect->message decoder is null or channel adapter is null, please check")
                     }
                     localChannelAdapter?.apply {
                         mINotifyProxyStateChange = byteToMessageDecoder
                         mINotifyClientCoreConnectState = this@ClientCore
+                        mLocalIChannelChange = mIChannelChange
                     }
                     ch.pipeline().addLast("localDecoder", byteToMessageDecoder)
                     ch.pipeline().addLast(
@@ -139,7 +152,11 @@ class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGe
                         .addLast("localChannelAdapter", localChannelAdapter)
                 }
             })
-            f = bootstrap.connect(host, port).awaitUninterruptibly()
+            /**
+             * how to use sync,syncUninterruptibly,wait and awaitUninterruptibly
+             * @see io.netty.util.concurrent.DefaultPromise
+             */
+            f = bootstrap.connect(host, port).syncUninterruptibly()
             if (f.isDone) {
                 LogUtil.d(TAG, "connect::connect done")
                 if (f.isSuccess) {
@@ -147,25 +164,20 @@ class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGe
                     f.channel().closeFuture().sync()
                 } else {
                     LogUtil.d(TAG, "connect::connect fail")
+                    f.cause().printStackTrace()
                     if (f.channel() != null) {
                         f.channel().close()
                     }
                 }
             } else {
                 LogUtil.d(TAG, "connect::connect not done")
+                f.cause().printStackTrace()
             }
         } catch (e: Exception) {
             e.printStackTrace()
         } finally {
             LogUtil.d(TAG, "do finally when channel close")
-            mHandler?.post {
-                localChannelAdapter?.mIChannelChange?.channelStateChange(
-                    localChannelAdapter?.mSimpleProxy,
-                    connectProxyState = false,
-                    connectTargetState = false,
-                    errorCode = Error.CONNECT_RELEASE
-                )
-            }
+            showConnectState(ConnectState.CONNECT_RELEASE)
             closeConnectInternal(host, port)
         }
     }
@@ -175,6 +187,53 @@ class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGe
         mReconnectNum = 0
         stopAutoReconnect = true
         doCloseConnect()
+    }
+
+    fun checkConnectState(tag: String): Boolean {
+        if (mChannel != null && mChannel!!.isOpen && mChannel!!.isActive) {
+            LogUtil.d(TAG, "checkConnectState::connect ok check tag is: $tag")
+            return true
+        }
+        LogUtil.d(TAG, "checkConnectState::connect bad check tag is: $tag")
+        return false
+    }
+
+    fun reConnectServer(host: String, port: Int) {
+        val checkConnectState = checkConnectState("reConnectServer")
+        LogUtil.d(TAG, "reConnectServer::checkConnectState is: $checkConnectState")
+        if (!checkConnectState) {
+            stopAutoReconnect =
+                true //reConnectServer is called by user, so I think this case no need auto reconnect
+            when (mStartType) {
+                1 -> {
+                    startClintWithSimpleThread(host, port)
+                }
+                2 -> {
+                    startClientWithServer(host, port) //restart internal for user
+                }
+            }
+        }
+    }
+
+    fun resetClientListener(
+        context: Context?,
+        iClientParameterCallBack: IClientParameterCallBack?,
+        iChannelChange: LocalChannelAdapter.IChannelChange?
+    ) {
+        this.mContext = context
+        this.mIClientParameterCallBack = iClientParameterCallBack
+        localChannelAdapter?.apply {
+            mLocalIChannelChange = iChannelChange
+        }
+    }
+
+    fun removeClientListener() {
+        mContext = null
+        this.mIClientParameterCallBack = null
+        this.mIChannelChange = null
+        localChannelAdapter?.apply {
+            mLocalIChannelChange = null
+        }
     }
 
     private fun closeConnectInternal(host: String, port: Int) {
@@ -189,12 +248,13 @@ class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGe
     private fun doCloseConnect() {
         LogUtil.d(TAG, "doCloseConnect")
         ForegroundServer.removeActionListener()
-        localChannelAdapter?.mINotifyClientCoreConnectState = null
-        localChannelAdapter?.mINotifyProxyStateChange = null
-        nioEventLoopGroup?.shutdownGracefully()
-        nioEventLoopGroup = null
-        mChannel?.close()
-        mChannel = null
+        this.localChannelAdapter?.mINotifyClientCoreConnectState = null
+        this.localChannelAdapter?.mINotifyProxyStateChange = null
+        this.nioEventLoopGroup?.shutdownGracefully()
+        this.nioEventLoopGroup = null
+        this.mChannel?.close()
+        this.mChannel = null
+        localChannelAdapter?.doubleCheckCloseChannel()
     }
 
     private fun doReconnect(host: String, port: Int) {
@@ -214,7 +274,10 @@ class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGe
                                 startClintWithSimpleThread(host, port)
                             }
                             2 -> {
-                                startClientWithServer(host, port) //restart internal
+                                startClientWithServer(
+                                    host,
+                                    port
+                                ) //restart internal for auto reconnect
                             }
                         }
                     } else {
@@ -226,35 +289,7 @@ class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGe
         }
     }
 
-    fun checkConnectState(tag: String): Boolean {
-        if (mChannel != null && mChannel!!.isOpen && mChannel!!.isActive) {
-            LogUtil.d(TAG, "checkConnectState::connect ok check tag is: $tag")
-            return true
-        }
-        LogUtil.d(TAG, "checkConnectState::connect bad check tag is: $tag")
-        return false
-    }
-
-    fun reConnectServer(host: String, port: Int){
-        val checkConnectState = checkConnectState("reConnectServer")
-        LogUtil.d(TAG, "reConnectServer::checkConnectState is: $checkConnectState")
-        if(!checkConnectState){
-            when (mStartType) {
-                1 -> {
-                    startClintWithSimpleThread(host, port)
-                }
-                2 -> {
-                    startClientWithServer(host, port) //restart internal
-                }
-            }
-        }
-    }
-
-    private fun startClientWithServerInternal(
-        context: Context?,
-        host: String?,
-        port: Int?
-    ) {
+    private fun startClientWithServerInternal(context: Context?, host: String?, port: Int?) {
         if (context == null || host == null || port == null) {
             LogUtil.e(TAG, "startClientWithServerInternal::start error please check param")
             return
@@ -276,6 +311,17 @@ class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGe
             mServiceConnection!!,
             Context.BIND_AUTO_CREATE
         )
+    }
+
+    private fun showConnectState(state: Int) {
+        mHandler?.post {
+            localChannelAdapter?.mLocalIChannelChange?.channelStateChange(
+                localChannelAdapter?.mSimpleProxy,
+                connectProxyState = false,
+                connectTargetState = false,
+                connectStateCode = state
+            )
+        }
     }
 
     private inner class CustomServiceConnection : ServiceConnection {
@@ -318,7 +364,7 @@ class ClientCore private constructor(ctx: Context, iGetNettyClientParameter: IGe
         return checkConnectState("actionCheckConnect")
     }
 
-    interface IGetNettyClientParameter {
+    interface IClientParameterCallBack {
         fun getMessageDecoder(): LocalByteToMessageDecoder
         fun getChannelAdapter(): LocalChannelAdapter
     }
