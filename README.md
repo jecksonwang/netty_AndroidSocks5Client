@@ -40,3 +40,4 @@ android socks5 client based on netty
 
 3.修复某些特定情况下，closeConnect方法不生效的问题
 
+
