@@ -40,4 +40,9 @@ android socks5 client based on netty
 
 3.修复某些特定情况下，closeConnect方法不生效的问题
 
+============2020年6月22日更新============
+
+1.修复与服务器建立交互连接后，clientCore获取到的channel是空的问题
+
+
 
