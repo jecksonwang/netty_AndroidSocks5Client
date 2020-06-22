@@ -5,7 +5,7 @@ import androidx.appcompat.app.AppCompatActivity
 import cn.jesson.nettyclient.channeladapter.LocalChannelAdapter
 import cn.jesson.nettyclient.core.ClientCore
 import cn.jesson.nettyclient.decode.LocalByteToMessageDecoder
-import cn.jesson.nettyclient.decode.Socks5LineBasedFrameDecoder
+import cn.jesson.nettyclient.decode.Socks5DelimiterBasedFrameDecoder
 import cn.jesson.nettyclient.utils.ConnectState
 import cn.jesson.nettyclient.utils.LogUtil
 import cn.jesson.nettyclient.utils.StartClientUtils
@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange,
             mClientCore?.closeConnect()
         }
         reconnect.setOnClickListener {
-            mClientCore?.reConnectServer("109.74.144.130", 1080)
+            mClientCore?.reConnectServer("109.74.144.130", 1080, false)
         }
     }
 
@@ -50,7 +50,7 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange,
         LogUtil.d(TAG, "====================onResume====================")
         mClientCore?.resetClientListener(this, this, this)
         val checkConnectState = mClientCore?.checkConnectState(TAG)
-        if(checkConnectState != null && checkConnectState){
+        if (checkConnectState != null && checkConnectState) {
             server_state.text = String.format(resources.getString(R.string.server_state), "connect")
         }
     }
@@ -75,18 +75,22 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange,
         openProxy: Boolean?,
         connectProxyState: Boolean,
         connectTargetState: Boolean,
-        connectStateCode: Int) {
-        LogUtil.d(TAG, "channelStateChange::openProxy is: $openProxy and connectProxyState is: $connectProxyState " +
-                "connect is: $connectTargetState and connect state code is: $connectStateCode")
+        connectStateCode: Int
+    ) {
+        LogUtil.d(
+            TAG,
+            "channelStateChange::openProxy is: $openProxy and connectProxyState is: $connectProxyState " +
+                    "connect is: $connectTargetState and connect state code is: $connectStateCode"
+        )
         if (connectTargetState) {
             LogUtil.d(TAG, "channelStateChange::show connect")
             server_state.text = String.format(resources.getString(R.string.server_state), "connect")
         } else {
-            if(connectStateCode == ConnectState.CONNECTING){
+            if (connectStateCode == ConnectState.CONNECTING) {
                 LogUtil.d(TAG, "channelStateChange::show connecting")
                 server_state.text =
                     String.format(resources.getString(R.string.server_state), "connecting")
-            }else{
+            } else {
                 LogUtil.d(TAG, "channelStateChange::show disconnect")
                 server_state.text =
                     String.format(resources.getString(R.string.server_state), "disconnect")
@@ -115,14 +119,13 @@ class MainActivity : AppCompatActivity(), LocalChannelAdapter.IChannelChange,
 
     override fun getMessageDecoder(): LocalByteToMessageDecoder {
 
-        /*val buf: ByteBuf = Unpooled.copiedBuffer(TAG.toByteArray())
-        return Socks5DelimiterBasedFrameDecoder.Builder(100000, buf)
-            .setProxyState(true)
-            .build()*/
-
-        return Socks5LineBasedFrameDecoder.Builder(100000)
+        return Socks5DelimiterBasedFrameDecoder.Builder(100000, TAG)
             .setProxyState(true)
             .build()
+
+        /* return Socks5LineBasedFrameDecoder.Builder(100000)
+             .setProxyState(true)
+             .build()*/
     }
 
     override fun getChannelAdapter(): LocalChannelAdapter {

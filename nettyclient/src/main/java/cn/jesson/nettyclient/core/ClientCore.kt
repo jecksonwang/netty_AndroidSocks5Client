@@ -14,6 +14,7 @@ import cn.jesson.nettyclient.utils.ConnectState
 import cn.jesson.nettyclient.utils.LogUtil
 import cn.jesson.nettyclient.utils.NetworkUtils
 import io.netty.bootstrap.Bootstrap
+import io.netty.buffer.Unpooled
 import io.netty.channel.Channel
 import io.netty.channel.ChannelFuture
 import io.netty.channel.ChannelInitializer
@@ -59,7 +60,7 @@ class ClientCore private constructor(
     var mWritePingTimeOut: Long = 20000
     var mAllPingTimeOut: Long = 0
 
-    private var mChannel: Channel? = null
+    var mChannel: Channel? = null
     private var mHandler: Handler? = null
     private var mHost: String? = null
     private var mPort: Int? = null
@@ -108,6 +109,30 @@ class ClientCore private constructor(
         }
     }
 
+    /**
+     * @return true mean channel is ok, whether data send success or fail need wait asynchronous results
+     */
+    fun sendData(data: ByteArray): Boolean{
+        if(mChannel == null || !mChannel?.isOpen!! || !mChannel?.isActive!!){
+            return false
+        }
+        try {
+            val buffer = Unpooled.buffer(data.size)
+            buffer.writeBytes(data)
+            mChannel!!.writeAndFlush(buffer).addListener {
+                if (it.isSuccess) {
+                    LogUtil.d(TAG, "sendData::send data success")
+                }else{
+                    LogUtil.d(TAG, "sendData::send data fail")
+                }
+            }
+        }catch (e: Exception){
+            e.printStackTrace()
+            return false
+        }
+        return true
+    }
+
     fun connect(host: String, port: Int) {
         LogUtil.d(TAG, "connect::host is: $host and port is: $port")
         if (!NetworkUtils.isConnected(mContext)) {
@@ -118,7 +143,7 @@ class ClientCore private constructor(
             nioEventLoopGroup = NioEventLoopGroup()
         }
         try {
-            var f: ChannelFuture? = null
+            val f: ChannelFuture?
             val bootstrap = Bootstrap()
             bootstrap.group(nioEventLoopGroup)
             bootstrap.channel(NioSocketChannel::class.java)
@@ -198,12 +223,11 @@ class ClientCore private constructor(
         return false
     }
 
-    fun reConnectServer(host: String, port: Int) {
+    fun reConnectServer(host: String, port: Int, closeAutoReconnect: Boolean) {
         val checkConnectState = checkConnectState("reConnectServer")
         LogUtil.d(TAG, "reConnectServer::checkConnectState is: $checkConnectState")
         if (!checkConnectState) {
-            stopAutoReconnect =
-                true //reConnectServer is called by user, so I think this case no need auto reconnect
+            stopAutoReconnect = closeAutoReconnect
             when (mStartType) {
                 1 -> {
                     startClintWithSimpleThread(host, port)

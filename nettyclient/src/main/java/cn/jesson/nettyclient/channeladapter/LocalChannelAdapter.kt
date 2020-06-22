@@ -47,12 +47,6 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
     override fun channelActive(ctx: ChannelHandlerContext?) {
         mInternalChannel = ctx?.channel()
         mHandler?.post {
-            mLocalIChannelChange?.channelStateChange(
-                mSimpleProxy,
-                mSimpleProxy,
-                !mSimpleProxy,
-                if(mSimpleProxy) ConnectState.CONNECTING else ConnectState.CONNECTED
-            )
             if (mSimpleProxy) {
                 LogUtil.d(TAG, "send init proxy request")
                 mProxyRequest = Constants.PROXY_REQUEST_INIT
@@ -63,6 +57,12 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
             } else {
                 mINotifyClientCoreConnectState?.notifyClientCoreConnectSuccess(ctx?.channel())
             }
+            mLocalIChannelChange?.channelStateChange(
+                mSimpleProxy,
+                mSimpleProxy,
+                !mSimpleProxy,
+                if(mSimpleProxy) ConnectState.CONNECTING else ConnectState.CONNECTED
+            )
         }
     }
 

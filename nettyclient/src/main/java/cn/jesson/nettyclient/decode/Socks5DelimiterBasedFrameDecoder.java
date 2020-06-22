@@ -16,7 +16,10 @@
 
 package cn.jesson.nettyclient.decode;
 
+import androidx.annotation.NonNull;
+
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.TooLongFrameException;
@@ -276,8 +279,9 @@ public class Socks5DelimiterBasedFrameDecoder extends LocalByteToMessageDecoder 
     public static class Builder {
         private Socks5DelimiterBasedFrameDecoder decoder;
 
-        public Builder(int maxFrameLength, ByteBuf delimiter) {
-            decoder = new Socks5DelimiterBasedFrameDecoder(maxFrameLength, delimiter);
+        public Builder(int maxFrameLength, @NonNull String delimiter) {
+            ByteBuf byteBuf = Unpooled.copiedBuffer(delimiter.getBytes());
+            decoder = new Socks5DelimiterBasedFrameDecoder(maxFrameLength, byteBuf);
         }
 
         public Builder setProxyState(boolean proxy) {
