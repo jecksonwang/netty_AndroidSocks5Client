@@ -31,7 +31,7 @@ class StartClientUtils private constructor() {
         port: Int
     ): ClientCore {
         synchronized(StartClientUtils) {
-            LogUtil.d(TAG, "startClientWithSimpleThread::host is: $host and port is: $port")
+            NettyLogUtil.d(TAG, "startClientWithSimpleThread::host is: $host and port is: $port")
             val clientCore = ClientCore.getInstance(context, iClientParameterCallBack, iChannelChange)
             clientCore.startClintWithSimpleThread(host, port)
             return clientCore
@@ -46,7 +46,7 @@ class StartClientUtils private constructor() {
         simpleKeepLive: Boolean
     ): ClientCore {
         synchronized(StartClientUtils) {
-            LogUtil.d(TAG, "startClientWithServer::host is: $host and port is: $port")
+            NettyLogUtil.d(TAG, "startClientWithServer::host is: $host and port is: $port")
             ServiceNotificationUtils.instance?.initContext(context)
             ServiceNotificationUtils.instance?.apply {
                 mKeepLive = simpleKeepLive

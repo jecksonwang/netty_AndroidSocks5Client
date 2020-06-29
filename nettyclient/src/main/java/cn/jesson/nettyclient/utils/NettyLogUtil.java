@@ -1,7 +1,7 @@
 package cn.jesson.nettyclient.utils;
 
 
-public class LogUtil {
+public class NettyLogUtil {
 
     private static int loglevel = Level.Level_HIGH.ordinal();
 

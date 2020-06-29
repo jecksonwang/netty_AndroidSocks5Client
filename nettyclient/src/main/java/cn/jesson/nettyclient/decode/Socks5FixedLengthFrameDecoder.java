@@ -21,7 +21,7 @@ import java.util.List;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.ByteToMessageDecoder;
-import cn.jesson.nettyclient.utils.LogUtil;
+import cn.jesson.nettyclient.utils.NettyLogUtil;
 
 public class Socks5FixedLengthFrameDecoder extends LocalByteToMessageDecoder {
 
@@ -74,7 +74,7 @@ public class Socks5FixedLengthFrameDecoder extends LocalByteToMessageDecoder {
 
     @Override
     public void notifyProxyStateChange(boolean state) {
-        LogUtil.d(TAG, "proxyStateChange::state is: " + state);
+        NettyLogUtil.d(TAG, "proxyStateChange::state is: " + state);
         mProxy = state;
     }
 

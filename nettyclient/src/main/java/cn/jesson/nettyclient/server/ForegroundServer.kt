@@ -10,7 +10,7 @@ import android.os.IBinder
 import androidx.core.content.ContextCompat.startForegroundService
 import cn.jesson.nettyclient.notification.ServiceNotificationUtils
 import cn.jesson.nettyclient.utils.Constants
-import cn.jesson.nettyclient.utils.LogUtil
+import cn.jesson.nettyclient.utils.NettyLogUtil
 
 class ForegroundServer : IntentService("nettyForegroundServer") {
 
@@ -31,7 +31,7 @@ class ForegroundServer : IntentService("nettyForegroundServer") {
 
         internal fun startClientWithServer(context: Context, host: String, port: Int) {
             if(mClientAction == null){
-                LogUtil.e(TAG, "startClientWithServer::start server fail by client action is null")
+                NettyLogUtil.e(TAG, "startClientWithServer::start server fail by client action is null")
                 return
             }
             val actionCheckConnect = mClientAction!!.actionCheckConnect()
@@ -42,7 +42,7 @@ class ForegroundServer : IntentService("nettyForegroundServer") {
                 intent.action = "action_start_netty_client"
                 startForegroundService(context, intent)
             } else {
-                LogUtil.d(TAG, "startClientWithServer::start server fail by server is ok")
+                NettyLogUtil.d(TAG, "startClientWithServer::start server fail by server is ok")
             }
         }
     }
@@ -58,28 +58,28 @@ class ForegroundServer : IntentService("nettyForegroundServer") {
 
     override fun onHandleIntent(intent: Intent?) {
         val mKeepLive = ServiceNotificationUtils.instance?.mKeepLive
-        LogUtil.d(TAG, "onHandleIntent::in mKeepLive is: $mKeepLive")
+        NettyLogUtil.d(TAG, "onHandleIntent::in mKeepLive is: $mKeepLive")
         if(mKeepLive != null && !mKeepLive){
             removeNotify()
         }
         if (mClientAction == null) {
-            LogUtil.e(TAG, "onHandleIntent::start server fail by client action is null")
+            NettyLogUtil.e(TAG, "onHandleIntent::start server fail by client action is null")
             return
         }
         val actionCheckConnect = mClientAction!!.actionCheckConnect()
         if (actionCheckConnect) {
-            LogUtil.d(TAG, "onHandleIntent::server is ok no need start")
+            NettyLogUtil.d(TAG, "onHandleIntent::server is ok no need start")
             return
         }
         val host = intent?.getStringExtra("host")
         val port = intent?.getIntExtra("port", 0)
         if (host.isNullOrEmpty() || port == null) {
-            LogUtil.e(TAG, "onHandleIntent::start server fail by host or port invalid")
+            NettyLogUtil.e(TAG, "onHandleIntent::start server fail by host or port invalid")
             return
         }
-        LogUtil.d(TAG, "onHandleIntent::host is: $host and port is: $port")
+        NettyLogUtil.d(TAG, "onHandleIntent::host is: $host and port is: $port")
         mClientAction!!.actionConnect(host, port)
-        LogUtil.d(TAG, "onHandleIntent::release")
+        NettyLogUtil.d(TAG, "onHandleIntent::release")
     }
 
     inner class GetNettyClient : Binder() {
@@ -89,7 +89,7 @@ class ForegroundServer : IntentService("nettyForegroundServer") {
     }
 
     internal fun startForegroundNotify() {
-        LogUtil.d(TAG, "startForegroundNotify")
+        NettyLogUtil.d(TAG, "startForegroundNotify")
         val build: Notification = ServiceNotificationUtils.instance?.getNotification()!!
         ServiceNotificationUtils.instance?.sendNotification(build)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

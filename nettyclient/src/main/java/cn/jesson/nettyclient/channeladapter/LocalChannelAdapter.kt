@@ -5,7 +5,7 @@ import android.os.Looper
 import android.text.TextUtils
 import cn.jesson.nettyclient.utils.Constants
 import cn.jesson.nettyclient.utils.ConnectState
-import cn.jesson.nettyclient.utils.LogUtil
+import cn.jesson.nettyclient.utils.NettyLogUtil
 import cn.jesson.nettyclient.utils.Socks5Utils
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
@@ -48,7 +48,7 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
         mInternalChannel = ctx?.channel()
         mHandler?.post {
             if (mSimpleProxy) {
-                LogUtil.d(TAG, "send init proxy request")
+                NettyLogUtil.d(TAG, "send init proxy request")
                 mProxyRequest = Constants.PROXY_REQUEST_INIT
                 val data: ByteArray = Socks5Utils.getInstance().buildProxyInitInfo()
                 val buf = Unpooled.buffer(data.size)
@@ -80,17 +80,17 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
         try {
             val data = ByteArray(buf.readableBytes())
             buf.readBytes(data)
-            LogUtil.d(TAG, "channelRead::receive data is: " + data.contentToString())
+            NettyLogUtil.d(TAG, "channelRead::receive data is: " + data.contentToString())
             if (data.isEmpty()) {
-                LogUtil.d(TAG, "channelRead::receive null data")
+                NettyLogUtil.d(TAG, "channelRead::receive null data")
             } else {
                 if (mSimpleProxy) {
                     when (mProxyRequest) {
                         Constants.PROXY_REQUEST_INIT -> {
-                            LogUtil.d(TAG, "channelRead::PROXY_REQUEST_INIT")
+                            NettyLogUtil.d(TAG, "channelRead::PROXY_REQUEST_INIT")
                             if (data.size == 2 && data[0].toInt() == Constants.PROXY_SOCKS_VERION) {
                                 if (data[1].toInt() == Constants.PROXY_SOCKS_NO_AUTH) {
-                                    LogUtil.d(TAG, "channelRead::PROXY_SOCKS_NO_AUTH")
+                                    NettyLogUtil.d(TAG, "channelRead::PROXY_SOCKS_NO_AUTH")
                                     mProxyRequest = Constants.PROXY_REQUEST_CONNECT_TARGET_HOST
                                     val hostIP: String? = getHostIP(mTargetIP)
                                     val proxyData: ByteArray? = Socks5Utils.getInstance()
@@ -100,7 +100,7 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
                                         bufHead.writeBytes(proxyData)
                                         ctx?.writeAndFlush(bufHead)
                                     } else {
-                                        LogUtil.d(TAG, "channelRead::proxy->send prxoy error")
+                                        NettyLogUtil.d(TAG, "channelRead::proxy->send prxoy error")
                                         mHandler?.post {
                                             mLocalIChannelChange?.channelStateChange(
                                                 mSimpleProxy,
@@ -111,10 +111,10 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
                                         }
                                     }
                                 } else if (data[1].toInt() == Constants.PROXY_SOCKS_AUTH) {
-                                    LogUtil.d(TAG, "channelRead::PROXY_SOCKS_AUTH")
+                                    NettyLogUtil.d(TAG, "channelRead::PROXY_SOCKS_AUTH")
                                     mProxyRequest = Constants.PROXY_REQUEST_AUTH_LOGIN
                                     if (TextUtils.isEmpty(mAuthName) || TextUtils.isEmpty(mAuthPassword)) {
-                                        LogUtil.d(TAG, "channelRead::auth name or pwd is null")
+                                        NettyLogUtil.d(TAG, "channelRead::auth name or pwd is null")
                                         mHandler?.post {
                                             mINotifyClientCoreConnectState?.notifyClientCoreProxyAuthError()
                                             mLocalIChannelChange?.channelStateChange(
@@ -132,7 +132,7 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
                                             bufAuthInfo.writeBytes(authInfo)
                                             ctx?.writeAndFlush(bufAuthInfo)
                                         } else {
-                                            LogUtil.d(TAG, "channelRead::proxy->send auth error")
+                                            NettyLogUtil.d(TAG, "channelRead::proxy->send auth error")
                                             mHandler?.post {
                                                 mLocalIChannelChange?.channelStateChange(
                                                     mSimpleProxy,
@@ -144,14 +144,14 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
                                         }
                                     }
                                 } else {
-                                    LogUtil.e(TAG, "channelRead::UNKNOWN_PROXY_AUTH")
+                                    NettyLogUtil.e(TAG, "channelRead::UNKNOWN_PROXY_AUTH")
                                 }
                             }
                         }
                         Constants.PROXY_REQUEST_AUTH_LOGIN -> {
-                            LogUtil.d(TAG, "channelRead::PROXY_REQUEST_AUTH_LOGIN")
+                            NettyLogUtil.d(TAG, "channelRead::PROXY_REQUEST_AUTH_LOGIN")
                             if (data.size == 2 && data[1].toInt() == Constants.PROXY_AUTH_SUCCESS) {
-                                LogUtil.d(TAG, "channelRead::PROXY_REQUEST_AUTH_LOGIN do login")
+                                NettyLogUtil.d(TAG, "channelRead::PROXY_REQUEST_AUTH_LOGIN do login")
                                 mProxyRequest = Constants.PROXY_REQUEST_CONNECT_TARGET_HOST
                                 val hostIP = getHostIP(mTargetIP)
                                 val proxySendConnectInfo: ByteArray? = Socks5Utils.getInstance()
@@ -161,7 +161,7 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
                                     bufHead.writeBytes(proxySendConnectInfo)
                                     ctx!!.writeAndFlush(bufHead)
                                 } else {
-                                    LogUtil.d(TAG, "channelRead::proxy->do login send prxoy error")
+                                    NettyLogUtil.d(TAG, "channelRead::proxy->do login send prxoy error")
                                     mHandler?.post {
                                         mLocalIChannelChange?.channelStateChange(
                                             mSimpleProxy,
@@ -172,7 +172,7 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
                                     }
                                 }
                             } else {
-                                LogUtil.d(TAG, "channelRead::proxy->auth fail")
+                                NettyLogUtil.d(TAG, "channelRead::proxy->auth fail")
                                 mHandler?.post {
                                     mINotifyClientCoreConnectState?.notifyClientCoreProxyAuthError()
                                     mLocalIChannelChange?.channelStateChange(
@@ -185,10 +185,10 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
                             }
                         }
                         Constants.PROXY_REQUEST_CONNECT_TARGET_HOST -> {
-                            LogUtil.d(TAG, "channelRead::PROXY_REQUEST_CONNECT_TARGET_HOST")
+                            NettyLogUtil.d(TAG, "channelRead::PROXY_REQUEST_CONNECT_TARGET_HOST")
                             val result = data[1].toInt()
                             if (data[0].toInt() == Constants.PROXY_SOCKS_VERION && result == Constants.PROXY_CONNECT_SUCCESS) {
-                                LogUtil.d(TAG, "channelRead::PROXY_CONNECT_SUCCESS")
+                                NettyLogUtil.d(TAG, "channelRead::PROXY_CONNECT_SUCCESS")
                                 mHandler?.post {
                                     mINotifyClientCoreConnectState?.notifyClientCoreConnectSuccess(ctx?.channel())
                                     mINotifyProxyStateChange?.notifyProxyStateChange(false)
@@ -200,7 +200,7 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
                                     )
                                 }
                             } else {
-                                LogUtil.d(TAG, "channelRead::PROXY_CONNECT_FAIL, fail info is: $result")
+                                NettyLogUtil.d(TAG, "channelRead::PROXY_CONNECT_FAIL, fail info is: $result")
                                 mHandler?.post {
                                     mLocalIChannelChange?.channelStateChange(
                                         mSimpleProxy,
@@ -212,7 +212,7 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
                             }
                         }
                         else -> {
-                            LogUtil.e(TAG, "channelRead::UNKNOWN PROXY")
+                            NettyLogUtil.e(TAG, "channelRead::UNKNOWN PROXY")
                         }
                     }
                 } else {
@@ -236,19 +236,19 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
         if (evt is IdleStateEvent) {
             when {
                 evt.state() == IdleState.READER_IDLE -> {
-                    LogUtil.d(TAG, "======READER_IDLE======")
+                    NettyLogUtil.d(TAG, "======READER_IDLE======")
                     mHandler?.post {
                         mLocalIChannelChange?.channelReadIdle()
                     }
                 }
                 evt.state() == IdleState.WRITER_IDLE -> {
-                    LogUtil.d(TAG, "======WRITER_IDLE======")
+                    NettyLogUtil.d(TAG, "======WRITER_IDLE======")
                     mHandler?.post {
                         mLocalIChannelChange?.channelWriteIdle()
                     }
                 }
                 evt.state() == IdleState.ALL_IDLE -> {
-                    LogUtil.d(TAG, "======ALL_IDLE======")
+                    NettyLogUtil.d(TAG, "======ALL_IDLE======")
                     mHandler?.post {
                         mLocalIChannelChange?.channelAllIdle()
                     }
@@ -303,7 +303,7 @@ class LocalChannelAdapter : ChannelHandlerAdapter() {
             }
             val address = InetAddress.getByName(addressHost)
             val hostAddress = address.hostAddress
-            LogUtil.d(TAG, "getHostIP::connect server ip is: $hostAddress")
+            NettyLogUtil.d(TAG, "getHostIP::connect server ip is: $hostAddress")
             return hostAddress
         } catch (e: Exception) {
             e.printStackTrace()
